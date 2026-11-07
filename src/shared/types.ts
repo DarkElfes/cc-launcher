@@ -19,25 +19,40 @@ export interface ProfileInfo {
   name: string
   /** Config folder passed as CLAUDE_CONFIG_DIR: ~/.claude-profiles/<name>. */
   dir: string
-  /** True when a credentials file exists in the folder. Its contents are never read. */
+  /** From `claude auth status` when known, else whether a credentials file exists (never read). */
   signedIn: boolean
-  /** Last plan usage reported by Claude Code's status line for this account, if any. */
+  /** Account behind this profile, from `claude auth status --json`. */
+  account?: AccountInfo
+  /** Latest plan usage: from `/usage` or from a running session's status line, whichever is newer. */
   usage?: ProfileUsage
+  /** Last refresh error, if any. */
+  error?: string
+}
+
+export interface AccountInfo {
+  loggedIn: boolean
+  email?: string
+  /** e.g. "pro", "max" */
+  plan?: string
+  orgName?: string
 }
 
 export interface UsageWindow {
   /** 0–100. 0 with stale=true means the window has reset since the last report. */
   usedPercent: number
-  /** Epoch ms when the window resets, or null when it already reset. */
+  /** Epoch ms when the window resets, or null when unknown / already reset. */
   resetsAt: number | null
+  /** Reset time as Claude Code printed it (e.g. "Nov 10, 7pm"), when available. */
+  resetsLabel?: string
   stale: boolean
 }
 
 export interface ProfileUsage {
-  /** Epoch ms of the last report from a running Claude Code session. */
+  /** Epoch ms when this was measured. */
   updatedAt: number
   fiveHour?: UsageWindow
   week?: UsageWindow
+  source: 'usage-command' | 'status-line'
 }
 
 export interface Settings {
@@ -58,6 +73,8 @@ export interface UpdateStatus {
 export interface AppState {
   appVersion: string
   update: UpdateStatus
+  /** True while account emails / plan usage are being refreshed in the background. */
+  accountsRefreshing: boolean
   projects: ProjectInfo[]
   profiles: ProfileInfo[]
   settings: Settings
@@ -101,6 +118,10 @@ export interface Api {
   killTerminal(id: string): void
   onTermData(cb: (e: TermDataEvent) => void): () => void
   onTermExit(cb: (e: TermExitEvent) => void): () => void
+  /** Re-reads account email and plan usage (all profiles, or one). */
+  refreshAccounts(profile?: string): Promise<Result>
+  /** Fires when background data (accounts, usage) changed; call getState() again. */
+  onStateChanged(cb: () => void): () => void
   checkForUpdates(): Promise<UpdateStatus>
   installUpdate(): void
   onUpdateStatus(cb: (s: UpdateStatus) => void): () => void

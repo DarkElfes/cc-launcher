@@ -45,6 +45,13 @@ _Last updated: 2026-11-07_
   the installer, blockmap and latest.yml (checked against the installer's size and sha512).
   `pnpm release` now builds first, then publishes with `gh release create`.
 
+- **0.3.1**: each account shows its **email and plan** (`claude auth status --json`), plus **5-hour and
+  weekly limits with reset times** from `claude -p "/usage" --output-format json`. That runs locally as
+  a slash command: 0 turns, $0, and doesn't touch the limits. Both run at start, every 5 min, after a
+  session ends, and on the Refresh button. The status line still gives live numbers during sessions;
+  whichever is newer wins. Checked against both real profiles; the numbers match the Claude app.
+  Note: the /usage text format isn't a documented API, so the parser (`accountInfo.ts`) is defensive.
+
 ## In progress
 - Nothing.
 

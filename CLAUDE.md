@@ -34,6 +34,8 @@ src/
     terminals.ts       node-pty processes keyed by id
     updater.ts         electron-updater wrapper (only active in installed builds with a publish target)
     usage.ts           per-profile status-line script that records rate_limits (5h/weekly usage)
+    accountInfo.ts     AccountMonitor: email/plan via `claude auth status --json`, limits via
+                       `claude -p "/usage"` (local, $0). Never reads credential files.
   preload/index.ts     contextBridge → window.api (the only renderer↔main surface)
   renderer/            React UI
     src/App.tsx        shell (shadcn Sidebar), view routing, terminal tabs, update toast

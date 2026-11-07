@@ -88,9 +88,15 @@ function Shell() {
     // Usage numbers are written by running Claude Code sessions; pick them up regularly.
     const poll = setInterval(() => document.visibilityState === 'visible' && void refresh(), 20_000)
     const off = window.api.onTermExit(({ id, exitCode }) => {
-      setTabs((ts) => ts.map((t) => (t.id === id ? { ...t, exitCode } : t)))
-      void refresh() // sign-in state may have changed
+      setTabs((ts) => {
+        // A session ended: login state or usage may have changed for that account.
+        const tab = ts.find((t) => t.id === id)
+        if (tab) void window.api.refreshAccounts(tab.profile)
+        return ts.map((t) => (t.id === id ? { ...t, exitCode } : t))
+      })
+      void refresh()
     })
+    const offState = window.api.onStateChanged(() => void refresh())
     const offUpdate = window.api.onUpdateStatus((update) => {
       setState((s) => (s ? { ...s, update } : s))
       if (update.state === 'ready') {
@@ -106,6 +112,7 @@ function Shell() {
       window.removeEventListener('focus', onFocus)
       clearInterval(poll)
       off()
+      offState()
       offUpdate()
     }
   }, [refresh])
@@ -278,7 +285,12 @@ function Shell() {
         )}
         {view.kind === 'project' && !project && <p className="p-8 text-sm text-muted-foreground">This project was removed.</p>}
         {view.kind === 'accounts' && (
-          <AccountsView profiles={state.profiles} onChanged={refresh} onSignIn={(profile) => openTerminal({ kind: 'login', profile })} />
+          <AccountsView
+            profiles={state.profiles}
+            refreshing={state.accountsRefreshing}
+            onChanged={refresh}
+            onSignIn={(profile) => openTerminal({ kind: 'login', profile })}
+          />
         )}
         {view.kind === 'settings' && <SettingsView state={state} onSaved={refresh} />}
 

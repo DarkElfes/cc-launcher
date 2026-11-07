@@ -89,7 +89,8 @@ export function readUsage(dir: string): ProfileUsage | undefined {
     return {
       updatedAt: (data.updatedAt ?? 0) * 1000,
       fiveHour: toWindow(data.rate_limits?.five_hour, now),
-      week: toWindow(data.rate_limits?.seven_day, now)
+      week: toWindow(data.rate_limits?.seven_day, now),
+      source: 'status-line'
     }
   } catch {
     return undefined

@@ -50,21 +50,54 @@ function barColor(pct: number): string {
   return '[&>div]:bg-emerald-500'
 }
 
+const timeFmt = new Intl.DateTimeFormat(undefined, { hour: 'numeric', minute: '2-digit' })
+const dayTimeFmt = new Intl.DateTimeFormat(undefined, { weekday: 'short', hour: 'numeric', minute: '2-digit' })
+const dateTimeFmt = new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
+
+/** "Resets at 11:00 PM · in 2h 7m", "Resets Wed 6:00 PM · in 3d 4h", like the Claude app. */
+export function resetText(w: UsageWindow): string {
+  if (w.stale) return 'Window restarted. New usage shows after the next refresh.'
+  if (w.resetsAt !== null) {
+    const d = new Date(w.resetsAt)
+    const today = new Date()
+    const days = (w.resetsAt - Date.now()) / 86_400_000
+    const when = d.toDateString() === today.toDateString() ? `at ${timeFmt.format(d)}` : days < 6.5 ? dayTimeFmt.format(d) : dateTimeFmt.format(d)
+    return `Resets ${when} · in ${timeUntil(w.resetsAt)}`
+  }
+  if (w.resetsLabel) return `Resets ${w.resetsLabel}`
+  return w.usedPercent === 0 ? 'Not started. The window begins with your next message.' : ''
+}
+
 /** One usage window: label, percent, bar and reset time. */
 export function UsageMeter({ label, w }: { label: string; w?: UsageWindow }) {
   if (!w) return <span className="text-xs text-muted-foreground">{label} —</span>
   const pct = Math.round(w.usedPercent)
   return (
-    <div className="flex min-w-36 flex-col gap-1">
+    <div className="flex min-w-44 flex-col gap-1">
       <div className="flex justify-between gap-3 text-xs">
         <span className="text-muted-foreground">{label}</span>
-        <span>{w.stale ? 'reset' : `${pct}%`}</span>
+        <span>{w.stale ? '0%' : `${pct}%`}</span>
       </div>
       <Progress value={w.stale ? 0 : pct} className={cn('h-1.5', barColor(pct))} />
-      <span className="text-[10px] text-muted-foreground">
-        {w.stale || w.resetsAt === null ? 'window restarted' : `resets in ${timeUntil(w.resetsAt)}`}
-      </span>
+      <span className="text-[10px] text-muted-foreground">{resetText(w)}</span>
     </div>
+  )
+}
+
+/** Email + plan under a profile name. */
+export function AccountLine({ profile }: { profile: ProfileInfo }) {
+  const a = profile.account
+  if (!a) return <span className="text-[10px] text-muted-foreground">checking account…</span>
+  if (!a.loggedIn) return <span className="text-[10px] text-amber-400">not signed in</span>
+  return (
+    <span className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
+      <span className="truncate">{a.email ?? 'unknown email'}</span>
+      {a.plan && (
+        <Badge variant="outline" className="h-4 px-1 text-[10px] uppercase">
+          {a.plan}
+        </Badge>
+      )}
+    </span>
   )
 }
 

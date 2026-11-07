@@ -22,6 +22,8 @@ const api: Api = {
   killTerminal: (id) => ipcRenderer.send('term:kill', id),
   onTermData: (cb) => listen<TermDataEvent>('term:data', cb),
   onTermExit: (cb) => listen<TermExitEvent>('term:exit', cb),
+  refreshAccounts: (profile) => ipcRenderer.invoke('accounts:refresh', profile),
+  onStateChanged: (cb) => listen<null>('state:changed', () => cb()),
   checkForUpdates: () => ipcRenderer.invoke('update:check'),
   installUpdate: () => ipcRenderer.send('update:install'),
   onUpdateStatus: (cb) => listen<UpdateStatus>('update:status', cb)

@@ -8,12 +8,14 @@ import type { AppState, ProjectInfo, Result, Settings, SpawnRequest } from '../s
 import {
   createProfile,
   ensureAllStatusLines,
+  listProfileNames,
   listProfiles,
   profileDir,
   profileEnv,
   profileExists,
   validateProfileName
 } from './profiles'
+import { AccountMonitor } from './accountInfo'
 import { Store } from './store'
 import { Terminals } from './terminals'
 import { Updater } from './updater'
@@ -23,6 +25,7 @@ const TITLEBAR_HEIGHT = 40
 
 let win: BrowserWindow | null = null
 let store: Store
+let monitor: AccountMonitor
 const sendToWindow = (channel: string, payload: unknown) => {
   if (win && !win.isDestroyed()) win.webContents.send(channel, payload)
 }
@@ -71,7 +74,8 @@ function getState(): AppState {
     projects: store.data.projects
       .map((p) => ({ ...p, exists: isDir(p.path) }))
       .sort((a, b) => (b.lastOpenedAt ?? b.addedAt) - (a.lastOpenedAt ?? a.addedAt)),
-    profiles: listProfiles(),
+    profiles: listProfiles((n) => monitor.get(n)),
+    accountsRefreshing: monitor.busy,
     settings: store.data.settings,
     claudePath: resolveClaude()
   }
@@ -111,6 +115,7 @@ function registerIpc(): void {
     if (profileExists(name)) return { ok: false, error: `Profile "${name}" already exists.` }
     try {
       createProfile(name)
+      void monitor.refresh(name)
       return ok(null)
     } catch (e) {
       return fail(e)
@@ -203,6 +208,11 @@ function registerIpc(): void {
   ipcMain.on('term:resize', (_e, id: string, cols: number, rows: number) => terminals.resize(id, cols, rows))
   ipcMain.on('term:kill', (_e, id: string) => terminals.kill(id))
 
+  ipcMain.handle('accounts:refresh', async (_e, name?: string) => {
+    await monitor.refresh(name)
+    return ok(null)
+  })
+
   ipcMain.handle('update:check', async () => {
     await updater.check()
     return updater.status
@@ -267,12 +277,22 @@ if (!app.requestSingleInstanceLock()) {
     // Releases are public now; delete the update token older versions may have saved.
     rmSync(join(app.getPath('userData'), 'update-token.bin'), { force: true })
     ensureAllStatusLines()
+    monitor = new AccountMonitor(join(app.getPath('userData'), 'usage-probe'), {
+      claudePath: resolveClaude,
+      profiles: listProfileNames,
+      env: profileEnv,
+      onChange: () => sendToWindow('state:changed', null)
+    })
     registerIpc()
     createWindow()
     updater.start()
+    monitor.start() // account email + /usage for every profile, then every 5 minutes
   })
 
-  app.on('before-quit', () => terminals.killAll())
+  app.on('before-quit', () => {
+    monitor?.stop()
+    terminals.killAll()
+  })
   app.on('window-all-closed', () => {
     terminals.killAll()
     app.quit()

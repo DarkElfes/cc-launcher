@@ -1,5 +1,6 @@
 import { useState, type ReactNode } from 'react'
 import {
+  ArrowClockwiseIcon,
   CodeIcon,
   FolderOpenIcon,
   FolderPlusIcon,
@@ -18,7 +19,7 @@ import { Input } from '@/components/ui/input'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { cn } from '@/lib/utils'
 import type { AppState, ProfileInfo, ProjectInfo, Result } from '../../shared/types'
-import { ProfileTag, showError, SignedIn, timeAgo, UsageInline, UsageMeter } from './ui'
+import { AccountLine, ProfileTag, showError, SignedIn, timeAgo, UsageInline, UsageMeter } from './ui'
 
 async function run<T>(p: Promise<Result<T>>): Promise<T | undefined> {
   const r = await p
@@ -157,7 +158,11 @@ export function ProjectView(props: {
               variant="outline"
               size="sm"
               className={cn(project.lastProfile === p.name && 'border-primary')}
-              title={p.signedIn ? p.dir : `${p.dir}\nNot signed in yet. Claude Code will ask you to log in.`}
+              title={
+                p.signedIn
+                  ? `${p.account?.email ?? ''}${p.account?.plan ? ` (${p.account.plan})` : ''}\n${p.dir}`.trim()
+                  : `${p.dir}\nNot signed in yet. Claude Code will ask you to log in.`
+              }
               onClick={() => props.onLaunch(p.name)}
             >
               <PlayIcon data-icon="inline-start" />
@@ -176,7 +181,12 @@ export function ProjectView(props: {
   )
 }
 
-export function AccountsView(props: { profiles: ProfileInfo[]; onChanged: () => void; onSignIn: (profile: string) => void }) {
+export function AccountsView(props: {
+  profiles: ProfileInfo[]
+  refreshing: boolean
+  onChanged: () => void
+  onSignIn: (profile: string) => void
+}) {
   const [name, setName] = useState('')
   const add = async () => {
     const n = name.trim().toLowerCase()
@@ -191,6 +201,12 @@ export function AccountsView(props: { profiles: ProfileInfo[]; onChanged: () => 
       <PageHeader
         title="Accounts"
         description="One profile per Claude account, each in its own folder under ~/.claude-profiles. The normal ~/.claude folder isn't used, so `claude` in other terminals can never switch an account here."
+        actions={
+          <Button variant="outline" size="sm" disabled={props.refreshing} onClick={() => void run(window.api.refreshAccounts())}>
+            <ArrowClockwiseIcon data-icon="inline-start" className={cn(props.refreshing && 'animate-spin')} />
+            {props.refreshing ? 'Refreshing…' : 'Refresh'}
+          </Button>
+        }
       />
       {props.profiles.length === 0 && (
         <p className="text-xs text-amber-400">No accounts yet. Add one below, then click Sign in.</p>
@@ -210,21 +226,30 @@ export function AccountsView(props: { profiles: ProfileInfo[]; onChanged: () => 
             {props.profiles.map((p) => (
               <TableRow key={p.name}>
                 <TableCell title={p.dir}>
-                  <ProfileTag name={p.name} />
+                  <div className="flex max-w-64 flex-col gap-1">
+                    <ProfileTag name={p.name} />
+                    <AccountLine profile={p} />
+                  </div>
                 </TableCell>
                 <TableCell>
                   <div className="flex flex-col items-start gap-1">
                     <SignedIn profile={p} />
-                    <span className="text-[10px] text-muted-foreground">
-                      {p.usage ? `usage seen ${timeAgo(p.usage.updatedAt)}` : 'no usage data yet'}
+                    <span className="text-[10px] text-muted-foreground" title={p.error}>
+                      {p.error
+                        ? 'refresh failed'
+                        : p.usage
+                          ? `updated ${timeAgo(p.usage.updatedAt)}`
+                          : p.signedIn
+                            ? 'loading usage…'
+                            : 'sign in to see usage'}
                     </span>
                   </div>
                 </TableCell>
                 <TableCell>
-                  <UsageMeter label="5h" w={p.usage?.fiveHour} />
+                  <UsageMeter label="5-hour limit" w={p.usage?.fiveHour} />
                 </TableCell>
                 <TableCell>
-                  <UsageMeter label="week" w={p.usage?.week} />
+                  <UsageMeter label="Weekly · all models" w={p.usage?.week} />
                 </TableCell>
                 <TableCell>
                   <div className="flex justify-end gap-2">
@@ -271,9 +296,9 @@ export function AccountsView(props: { profiles: ProfileInfo[]; onChanged: () => 
         To sign in, click <b>Sign in</b>. Claude Code opens below; follow its login steps (type <code>/login</code> if it doesn't ask).
       </p>
       <p className="text-xs text-muted-foreground">
-        Usage comes from Claude Code's status line (Pro/Max plans). It updates while a session of that account
-        is running, after its first reply. The app adds a small status-line script to each profile for this,
-        unless you've set your own.
+        Email and plan come from <code>claude auth status</code>. Limits come from Claude Code's own{' '}
+        <code>/usage</code>, which runs locally and doesn't use your limits. They refresh every 5 minutes, and
+        live from the status line while a session is running.
       </p>
     </div>
   )
