@@ -29,7 +29,7 @@ nsis:
 # - Installed apps read it with a separate read-only token entered in Settings (never built in).
 publish:
   provider: github
-  owner: GITHUB_USER # TODO: your GitHub username
+  owner: DarkElfes
   repo: cc-launcher
   private: true
   releaseType: release
