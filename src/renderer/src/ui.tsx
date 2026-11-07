@@ -69,14 +69,14 @@ export function resetText(w: UsageWindow): string {
 }
 
 /** One usage window: label, percent, bar and reset time. */
-export function UsageMeter({ label, w }: { label: string; w?: UsageWindow }) {
-  if (!w) return <span className="text-xs text-muted-foreground">{label} —</span>
+export function UsageMeter({ label, w }: { label?: string; w?: UsageWindow }) {
+  if (!w) return <span className="text-xs text-muted-foreground">{label ? `${label} —` : '—'}</span>
   const pct = Math.round(w.usedPercent)
   return (
-    <div className="flex min-w-44 flex-col gap-1">
+    <div className="flex min-w-36 flex-col gap-1">
       <div className="flex justify-between gap-3 text-xs">
         <span className="text-muted-foreground">{label}</span>
-        <span>{w.stale ? '0%' : `${pct}%`}</span>
+        <span className="font-medium">{w.stale ? '0%' : `${pct}%`}</span>
       </div>
       <Progress value={w.stale ? 0 : pct} className={cn('h-1.5', barColor(pct))} />
       <span className="text-[10px] text-muted-foreground">{resetText(w)}</span>

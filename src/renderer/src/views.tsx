@@ -216,25 +216,22 @@ export function AccountsView(props: {
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>Profile</TableHead>
-              <TableHead>Status</TableHead>
+              <TableHead>Account</TableHead>
               <TableHead>5-hour limit</TableHead>
-              <TableHead>Weekly limit</TableHead>
-              <TableHead className="text-right">Actions</TableHead>
+              <TableHead>Weekly · all models</TableHead>
+              <TableHead className="w-0 text-right" />
             </TableRow>
           </TableHeader>
           <TableBody>
             {props.profiles.map((p) => (
               <TableRow key={p.name}>
-                <TableCell title={p.dir}>
-                  <div className="flex max-w-64 flex-col gap-1">
-                    <ProfileTag name={p.name} />
+                <TableCell title={p.dir} className="whitespace-normal">
+                  <div className="flex max-w-60 min-w-40 flex-col gap-1">
+                    <span className="flex items-center gap-2">
+                      <ProfileTag name={p.name} />
+                      {!p.signedIn && <SignedIn profile={p} />}
+                    </span>
                     <AccountLine profile={p} />
-                  </div>
-                </TableCell>
-                <TableCell>
-                  <div className="flex flex-col items-start gap-1">
-                    <SignedIn profile={p} />
                     <span className="text-[10px] text-muted-foreground" title={p.error}>
                       {p.error
                         ? 'refresh failed'
@@ -246,32 +243,31 @@ export function AccountsView(props: {
                     </span>
                   </div>
                 </TableCell>
-                <TableCell>
-                  <UsageMeter label="5-hour limit" w={p.usage?.fiveHour} />
+                <TableCell className="whitespace-normal">
+                  <UsageMeter w={p.usage?.fiveHour} />
+                </TableCell>
+                <TableCell className="whitespace-normal">
+                  <UsageMeter w={p.usage?.week} />
                 </TableCell>
                 <TableCell>
-                  <UsageMeter label="Weekly · all models" w={p.usage?.week} />
-                </TableCell>
-                <TableCell>
-                  <div className="flex justify-end gap-2">
+                  <div className="flex justify-end gap-1">
                     <Button variant="outline" size="xs" onClick={() => props.onSignIn(p.name)}>
                       <SignInIcon data-icon="inline-start" />
                       {p.signedIn ? 'Open' : 'Sign in'}
                     </Button>
-                    <Button variant="outline" size="xs" onClick={() => run(window.api.openFolder(p.dir))}>
-                      <FolderOpenIcon data-icon="inline-start" />
-                      Folder
+                    <Button variant="outline" size="icon-xs" title={`Open folder ${p.dir}`} onClick={() => run(window.api.openFolder(p.dir))}>
+                      <FolderOpenIcon />
                     </Button>
                     <Button
                       variant="destructive"
-                      size="xs"
+                      size="icon-xs"
+                      title="Remove this account from this PC"
                       onClick={async () => {
                         await run(window.api.removeProfile(p.name))
                         props.onChanged()
                       }}
                     >
-                      <TrashIcon data-icon="inline-start" />
-                      Remove
+                      <TrashIcon />
                     </Button>
                   </div>
                 </TableCell>

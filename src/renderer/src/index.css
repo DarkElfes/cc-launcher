@@ -135,6 +135,27 @@
   }
 }
 
+/* Scrollbars: thin, square (Lyra), no arrow buttons, colored from the theme tokens. */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-track,
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
+::-webkit-scrollbar-button {
+  display: none;
+}
+::-webkit-scrollbar-thumb {
+  background-color: color-mix(in oklch, var(--foreground) 14%, transparent);
+  border: 3px solid transparent;
+  background-clip: padding-box;
+}
+::-webkit-scrollbar-thumb:hover {
+  background-color: color-mix(in oklch, var(--foreground) 28%, transparent);
+}
+
 /* Custom title bar: drag the window from these areas; interactive children opt out. */
 .app-drag {
   -webkit-app-region: drag;
