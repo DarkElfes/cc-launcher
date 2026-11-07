@@ -48,8 +48,8 @@ export interface Settings {
 }
 
 export interface UpdateStatus {
-  /** disabled = dev build, or installer built without a publish target. needs-token = no GitHub token saved. */
-  state: 'idle' | 'disabled' | 'needs-token' | 'checking' | 'none' | 'downloading' | 'ready' | 'error'
+  /** disabled = dev build, or installer built without a publish target. */
+  state: 'idle' | 'disabled' | 'checking' | 'none' | 'downloading' | 'ready' | 'error'
   version?: string
   percent?: number
   error?: string
@@ -58,8 +58,6 @@ export interface UpdateStatus {
 export interface AppState {
   appVersion: string
   update: UpdateStatus
-  /** Where the GitHub update token comes from. The token itself never leaves the main process. */
-  updateTokenSource: 'saved' | 'built-in' | 'none'
   projects: ProjectInfo[]
   profiles: ProfileInfo[]
   settings: Settings
@@ -104,8 +102,6 @@ export interface Api {
   onTermData(cb: (e: TermDataEvent) => void): () => void
   onTermExit(cb: (e: TermExitEvent) => void): () => void
   checkForUpdates(): Promise<UpdateStatus>
-  /** Saves (or with "" removes) the GitHub update token, then re-checks for updates. */
-  setUpdateToken(token: string): Promise<Result>
   installUpdate(): void
   onUpdateStatus(cb: (s: UpdateStatus) => void): () => void
 }

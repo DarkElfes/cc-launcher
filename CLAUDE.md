@@ -19,9 +19,8 @@ Plan: `docs/PLAN.md`. Current state: `docs/STATUS.md`. **Update STATUS.md at the
 | `pnpm release` | build and upload to the `publish` target in `electron-builder.yml` (for auto-update) |
 | `pnpm dlx shadcn@latest add <name>` | add a shadcn component to `src/renderer/src/components/ui/` |
 
-Releasing: see `docs/RELEASING.md`. Updates come from releases of a private GitHub repo. The app
-reads them with a read-only token the user enters in Settings, stored encrypted by
-`src/main/updateToken.ts`. Never build a token into the app or commit one.
+Releasing: see `docs/RELEASING.md`. **The repo is public**, and updates come from its GitHub releases
+without a token. Never commit secrets: tokens, `.credentials.json`, `.claude.json`, profile folders.
 
 ## Architecture
 
@@ -34,7 +33,6 @@ src/
     profiles.ts        profile folders (~/.claude-profiles/<name>, "default" = ~/.claude), env for claude
     terminals.ts       node-pty processes keyed by id
     updater.ts         electron-updater wrapper (only active in installed builds with a publish target)
-    updateToken.ts     encrypted (safeStorage) read-only GitHub token for updates
     usage.ts           per-profile status-line script that records rate_limits (5h/weekly usage)
   preload/index.ts     contextBridge → window.api (the only renderer↔main surface)
   renderer/            React UI

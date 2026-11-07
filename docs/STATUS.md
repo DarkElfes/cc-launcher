@@ -48,14 +48,13 @@ _Last updated: 2026-11-07_
 ## In progress
 - Nothing.
 
-- **0.2.1 (not released yet)**: the read-only update token is built in at release time from
-  `CCL_UPDATE_TOKEN` (never in git), so installs need no setup. A token saved in Settings overrides it.
-  `pnpm release` requires the variable and checks that the token got embedded. Tested with a dummy value.
+- **0.3.0**: the repo is public, so updates need no token. All token code is removed, and old saved
+  tokens are deleted on startup. Repo and history were audited before going public: no secrets or
+  credential files, and only the commit author email.
 
 ## Next
-- Owner: in a terminal, set `CCL_UPDATE_TOKEN` (Read-Host) and run `pnpm release` to publish 0.2.1.
-  0.2.0 has no token, so install 0.2.1 by hand once (or paste the token in 0.2.0's Settings to test
-  auto-update). Then release 0.2.2 to confirm an installed copy updates itself.
+- Owner: install 0.3.0 by hand once (0.2.0 expects a private repo). Then release 0.3.1 to confirm an
+  installed copy updates itself.
 - M2: git info on project cards and in the project view; "New project" with templates; STATUS.md
   viewer/editor.
 

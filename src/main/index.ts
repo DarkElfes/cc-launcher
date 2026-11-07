@@ -1,6 +1,6 @@
 import { spawn as spawnProcess } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
-import { existsSync, statSync } from 'node:fs'
+import { existsSync, rmSync, statSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { basename, join } from 'node:path'
 import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron'
@@ -17,7 +17,6 @@ import {
 import { Store } from './store'
 import { Terminals } from './terminals'
 import { Updater } from './updater'
-import { setUpdateToken, updateTokenSource } from './updateToken'
 
 /** Must match the title bar height in the renderer (h-10 = 40px). */
 const TITLEBAR_HEIGHT = 40
@@ -69,7 +68,6 @@ function getState(): AppState {
   return {
     appVersion: app.getVersion(),
     update: updater.status,
-    updateTokenSource: updateTokenSource(),
     projects: store.data.projects
       .map((p) => ({ ...p, exists: isDir(p.path) }))
       .sort((a, b) => (b.lastOpenedAt ?? b.addedAt) - (a.lastOpenedAt ?? a.addedAt)),
@@ -209,15 +207,6 @@ function registerIpc(): void {
     await updater.check()
     return updater.status
   })
-  ipcMain.handle('update:setToken', async (_e, token: string): Promise<Result> => {
-    try {
-      setUpdateToken(token)
-      void updater.check()
-      return ok(null)
-    } catch (e) {
-      return fail(e)
-    }
-  })
   ipcMain.on('update:install', () => {
     terminals.killAll()
     updater.install()
@@ -275,6 +264,8 @@ if (!app.requestSingleInstanceLock()) {
 
   void app.whenReady().then(() => {
     store = new Store(join(app.getPath('userData'), 'app.json'))
+    // Releases are public now; delete the update token older versions may have saved.
+    rmSync(join(app.getPath('userData'), 'update-token.bin'), { force: true })
     ensureAllStatusLines()
     registerIpc()
     createWindow()
