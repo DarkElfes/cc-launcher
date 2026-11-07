@@ -5,7 +5,7 @@ Updates are hosted as **releases of the private GitHub repo** `DarkElfes/cc-laun
 
 | Who | How it authenticates | Access |
 | --- | --- | --- |
-| **You, publishing** (`pnpm release`) | The signed-in GitHub CLI (`gh auth login`). Its token is handed to electron-builder for that one command only | Your account |
+| **You, publishing** (`pnpm release`) | The signed-in GitHub CLI (`gh auth login`). No token env var | Your account |
 | **Installed apps, downloading updates** | A fine-grained token pasted into the app (Settings → GitHub update token) on each PC | This repo only, Contents: **Read-only** |
 
 No token goes into the repo or the installer, or into a permanent environment variable. A
@@ -22,12 +22,12 @@ in `%APPDATA%\cc-launcher\update-token.bin`, and never passes it to the renderer
 
 ## Each release
 1. Bump `version` in `package.json` (e.g. 0.2.0 → 0.2.1). Commit and push.
-2. In the project folder:
-   ```powershell
-   $env:GH_TOKEN = gh auth token; pnpm release; Remove-Item Env:GH_TOKEN
-   ```
-   This builds the installer and uploads `cc-launcher-Setup-<ver>.exe`, `.blockmap` and `latest.yml`
-   to a GitHub release `v<ver>`.
+2. In the project folder: `pnpm release` (`scripts/release.mjs`). It builds with
+   `--publish never`, checks that `dist/latest.yml` matches the version, then creates GitHub release
+   `v<ver>` with `cc-launcher-Setup-<ver>.exe`, `.blockmap` and `latest.yml` in one `gh release create`.
+   It refuses to run if that release already exists.
+   (electron-builder's own publishing was dropped: its parallel uploads raced on creating the release
+   and once left v0.2.0 without its installer.)
 3. Installed apps check at startup and every 4 h, download in the background, then show
    "Restart". Quitting also installs the update.
 

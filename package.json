@@ -11,7 +11,7 @@
     "start": "electron-vite preview",
     "typecheck": "tsc --noEmit",
     "dist": "electron-vite build && electron-builder --win --publish never",
-    "release": "electron-vite build && electron-builder --win --publish always",
+    "release": "node scripts/release.mjs",
     "icon": "node scripts/make-icon.mjs"
   },
   "devDependencies": {

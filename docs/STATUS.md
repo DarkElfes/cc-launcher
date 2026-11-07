@@ -41,13 +41,16 @@ _Last updated: 2026-11-07_
     "5h x% · wk y%" on the launch buttons. Refreshed every 20 s. Tested the script under PowerShell and
     Git Bash with sample data.
 
+- **GitHub**: private repo DarkElfes/cc-launcher. `main` is pushed. Release **v0.2.0** is published with
+  the installer, blockmap and latest.yml (checked against the installer's size and sha512).
+  `pnpm release` now builds first, then publishes with `gh release create`.
+
 ## In progress
 - Nothing.
 
 ## Next
-- One-time GitHub setup (owner's part): create the private repo, set `owner` in
-  `electron-builder.yml`, create the publish and update tokens, then do a first `pnpm release`
-  and confirm an installed copy updates (bump to 0.1.1).
+- Owner: install v0.2.0 from the release (replacing 0.1.0), paste the read-only update token into
+  Settings. Then release 0.2.1 to confirm an installed copy updates itself.
 - M2: git info on project cards and in the project view; "New project" with templates; STATUS.md
   viewer/editor.
 
