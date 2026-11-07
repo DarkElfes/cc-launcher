@@ -18,6 +18,7 @@ const api: Api = {
   openInEditor: (path) => ipcRenderer.invoke('shell:openInEditor', path),
   spawnTerminal: (req) => ipcRenderer.invoke('term:spawn', req),
   writeTerminal: (id, data) => ipcRenderer.send('term:write', id, data),
+  dictate: (id) => ipcRenderer.send('term:dictate', id),
   resizeTerminal: (id, cols, rows) => ipcRenderer.send('term:resize', id, cols, rows),
   killTerminal: (id) => ipcRenderer.send('term:kill', id),
   onTermData: (cb) => listen<TermDataEvent>('term:data', cb),

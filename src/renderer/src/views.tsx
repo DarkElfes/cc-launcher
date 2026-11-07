@@ -16,6 +16,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from '@/components/ui/empty'
 import { Field, FieldDescription, FieldGroup, FieldLabel } from '@/components/ui/field'
 import { Input } from '@/components/ui/input'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { cn } from '@/lib/utils'
 import type { AppState, ProfileInfo, ProjectInfo, Result } from '../../shared/types'
@@ -304,10 +305,21 @@ export function AccountsView(props: {
   )
 }
 
+/** Languages Claude Code voice dictation supports (https://code.claude.com/docs/en/voice-dictation). */
+const LANGUAGES = [
+  'ukrainian', 'english', 'russian', 'polish', 'german', 'french', 'spanish', 'italian', 'portuguese', 'dutch',
+  'czech', 'danish', 'norwegian', 'swedish', 'greek', 'turkish', 'hindi', 'indonesian', 'japanese', 'korean'
+]
+const KEEP = 'keep'
+const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1)
+
 export function SettingsView(props: { state: AppState; onSaved: () => void }) {
   const [claudePath, setClaudePath] = useState(props.state.settings.claudePath ?? '')
   const [editor, setEditor] = useState(props.state.settings.editorCommand ?? '')
+  const [language, setLanguage] = useState(props.state.settings.claudeLanguage ?? KEEP)
+  const [voiceMode, setVoiceMode] = useState<string>(props.state.settings.voiceMode ?? KEEP)
   const [saved, setSaved] = useState(false)
+  const touch = () => setSaved(false)
   return (
     <div className="flex-1 overflow-y-auto p-6">
       <div className="flex max-w-xl flex-col gap-6">
@@ -315,7 +327,12 @@ export function SettingsView(props: { state: AppState; onSaved: () => void }) {
         <form
           onSubmit={async (e) => {
             e.preventDefault()
-            const r = await window.api.saveSettings({ claudePath, editorCommand: editor })
+            const r = await window.api.saveSettings({
+              claudePath,
+              editorCommand: editor,
+              claudeLanguage: language === KEEP ? undefined : language,
+              voiceMode: voiceMode === KEEP ? undefined : (voiceMode as 'tap' | 'hold' | 'off')
+            })
             if (!r.ok) return showError(r.error)
             setSaved(true)
             props.onSaved()
@@ -347,6 +364,55 @@ export function SettingsView(props: { state: AppState; onSaved: () => void }) {
                 placeholder="zed"
               />
               <FieldDescription>Runs as: &lt;command&gt; "&lt;project folder&gt;"</FieldDescription>
+            </Field>
+            <Field>
+              <FieldLabel>Claude language (replies and voice)</FieldLabel>
+              <Select
+                value={language}
+                onValueChange={(v) => {
+                  setLanguage(v)
+                  touch()
+                }}
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={KEEP}>Don't change (set per account with /config)</SelectItem>
+                  {LANGUAGES.map((l) => (
+                    <SelectItem key={l} value={l}>
+                      {cap(l)}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <FieldDescription>
+                Applied to every account. Claude replies in this language, and voice dictation recognizes it.
+              </FieldDescription>
+            </Field>
+            <Field>
+              <FieldLabel>Voice dictation</FieldLabel>
+              <Select
+                value={voiceMode}
+                onValueChange={(v) => {
+                  setVoiceMode(v)
+                  touch()
+                }}
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={KEEP}>Don't change (set per account with /voice)</SelectItem>
+                  <SelectItem value="tap">On: tap (Dictate button or Ctrl+Space: start, again to send)</SelectItem>
+                  <SelectItem value="hold">On: hold Space while talking</SelectItem>
+                  <SelectItem value="off">Off</SelectItem>
+                </SelectContent>
+              </Select>
+              <FieldDescription>
+                Uses Claude Code's own dictation (Anthropic speech-to-text, doesn't count toward your limits).
+                Applies to sessions started after saving. Windows must allow microphone access for desktop apps.
+              </FieldDescription>
             </Field>
             <Field orientation="horizontal">
               <Button type="submit">Save</Button>

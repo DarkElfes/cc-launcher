@@ -52,6 +52,14 @@ _Last updated: 2026-11-07_
   whichever is newer wins. Checked against both real profiles; the numbers match the Claude app.
   Note: the /usage text format isn't a documented API, so the parser (`accountInfo.ts`) is defensive.
 
+- **0.4.0**: voice dictation without typing commands. Settings has **Claude language** (replies + dictation)
+  and **Voice dictation** (tap / hold / off), written into every profile's settings.json (`language`,
+  `voice`) by `profileSettings.ts`. In tap mode the app also binds Alt+K (`meta+k` → `voice:pushToTalk`) in
+  each profile's keybindings.json. The **Dictate** button in the tab bar and **Ctrl+Space** send that key
+  to the active Claude terminal. Tested in a fake home: files written correctly, button shown,
+  Ctrl+Space caught. **Not yet tested with a real microphone**, and hold mode inside the app's
+  terminal is untested (tap is the recommended mode).
+
 ## In progress
 - Nothing.
 

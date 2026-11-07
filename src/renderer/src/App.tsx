@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { FolderSimpleIcon, GearSixIcon, PlusIcon, SquaresFourIcon, UsersThreeIcon, WarningIcon, XIcon } from '@phosphor-icons/react'
+import { FolderSimpleIcon, GearSixIcon, MicrophoneIcon, PlusIcon, SquaresFourIcon, UsersThreeIcon, WarningIcon, XIcon } from '@phosphor-icons/react'
 import { toast } from 'sonner'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
@@ -191,6 +191,26 @@ function Shell() {
     return m
   }, [tabs])
 
+  // Ctrl+Space anywhere in the window: start/stop voice dictation in the visible Claude terminal.
+  const activeId = (() => {
+    const group = view.kind === 'project' ? view.id : view.kind === 'accounts' ? 'accounts' : null
+    const id = group ? activeTab[group] : undefined
+    return tabs.find((t) => t.id === id && t.exitCode === undefined)?.id
+  })()
+  const voiceTap = state?.settings.voiceMode === 'tap'
+  useEffect(() => {
+    if (!activeId || !voiceTap) return
+    const onKey = (e: KeyboardEvent) => {
+      if (e.type === 'keydown' && e.ctrlKey && !e.altKey && !e.shiftKey && e.code === 'Space' && !e.repeat) {
+        e.preventDefault()
+        e.stopPropagation()
+        window.api.dictate(activeId)
+      }
+    }
+    window.addEventListener('keydown', onKey, true) // capture: before xterm sees it
+    return () => window.removeEventListener('keydown', onKey, true)
+  }, [activeId, voiceTap])
+
   if (!state) return <div className="p-8 text-sm text-muted-foreground">Loading…</div>
 
   const currentGroup = view.kind === 'project' ? view.id : view.kind === 'accounts' ? 'accounts' : null
@@ -324,6 +344,29 @@ function Shell() {
                   </div>
                 )
               })}
+              {activeId && (
+                <div className="ml-auto flex items-center pr-2">
+                  <Button
+                    variant="ghost"
+                    size="xs"
+                    disabled={!voiceTap}
+                    title={
+                      voiceTap
+                        ? 'Voice dictation: click (or Ctrl+Space) to start talking, again to send'
+                        : 'Turn on voice (tap mode) in Settings to use this button'
+                    }
+                    onClick={() => {
+                      window.api.dictate(activeId)
+                      // Give keyboard focus back to the terminal.
+                      ;(document.querySelector('.terminal-host[style*="block"] textarea') as HTMLTextAreaElement | null)?.focus()
+                    }}
+                  >
+                    <MicrophoneIcon data-icon="inline-start" />
+                    Dictate
+                    <kbd className="ml-1 text-[10px] text-muted-foreground">Ctrl+Space</kbd>
+                  </Button>
+                </div>
+              )}
             </div>
           )}
           <div className="relative min-h-0 flex-1 bg-background">

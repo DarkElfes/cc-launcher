@@ -16,6 +16,7 @@ import {
   validateProfileName
 } from './profiles'
 import { AccountMonitor } from './accountInfo'
+import { applyVoiceSettings, DICTATE_SEQUENCE } from './profileSettings'
 import { Store } from './store'
 import { Terminals } from './terminals'
 import { Updater } from './updater'
@@ -60,6 +61,17 @@ function resolveClaude(): string | null {
     }
   }
   return null
+}
+
+/** Writes the app's language/voice choices into one profile (or all). Never throws. */
+function applyProfileSettings(only?: string): void {
+  for (const name of only ? [only] : listProfileNames()) {
+    try {
+      applyVoiceSettings(profileDir(name), store.data.settings)
+    } catch {
+      // A locked or read-only file shouldn't break the app.
+    }
+  }
 }
 
 function projectInfo(id: string): ProjectInfo | undefined {
@@ -115,6 +127,7 @@ function registerIpc(): void {
     if (profileExists(name)) return { ok: false, error: `Profile "${name}" already exists.` }
     try {
       createProfile(name)
+      applyProfileSettings(name)
       void monitor.refresh(name)
       return ok(null)
     } catch (e) {
@@ -148,9 +161,12 @@ function registerIpc(): void {
   ipcMain.handle('settings:save', (_e, settings: Settings): Result => {
     store.data.settings = {
       claudePath: settings.claudePath?.trim() || undefined,
-      editorCommand: settings.editorCommand?.trim() || undefined
+      editorCommand: settings.editorCommand?.trim() || undefined,
+      claudeLanguage: settings.claudeLanguage?.trim() || undefined,
+      voiceMode: settings.voiceMode && ['tap', 'hold', 'off'].includes(settings.voiceMode) ? settings.voiceMode : undefined
     }
     store.save()
+    applyProfileSettings()
     return ok(null)
   })
 
@@ -187,6 +203,7 @@ function registerIpc(): void {
       cwd = profileDir(req.profile)
     }
     createProfile(req.profile) // also (re)installs the usage status line
+    applyProfileSettings(req.profile)
 
     try {
       const id = terminals.spawn({ file: claude, args: [], cwd, env: profileEnv(req.profile), cols: req.cols, rows: req.rows })
@@ -207,6 +224,7 @@ function registerIpc(): void {
   ipcMain.on('term:write', (_e, id: string, data: string) => terminals.write(id, data))
   ipcMain.on('term:resize', (_e, id: string, cols: number, rows: number) => terminals.resize(id, cols, rows))
   ipcMain.on('term:kill', (_e, id: string) => terminals.kill(id))
+  ipcMain.on('term:dictate', (_e, id: string) => terminals.write(id, DICTATE_SEQUENCE))
 
   ipcMain.handle('accounts:refresh', async (_e, name?: string) => {
     await monitor.refresh(name)
@@ -277,6 +295,7 @@ if (!app.requestSingleInstanceLock()) {
     // Releases are public now; delete the update token older versions may have saved.
     rmSync(join(app.getPath('userData'), 'update-token.bin'), { force: true })
     ensureAllStatusLines()
+    applyProfileSettings()
     monitor = new AccountMonitor(join(app.getPath('userData'), 'usage-probe'), {
       claudePath: resolveClaude,
       profiles: listProfileNames,

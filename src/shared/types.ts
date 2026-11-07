@@ -60,6 +60,10 @@ export interface Settings {
   claudePath?: string
   /** Command used for "Open in editor". Defaults to "zed". */
   editorCommand?: string
+  /** Claude's reply + voice dictation language for all profiles (e.g. "ukrainian"). Empty = leave as is. */
+  claudeLanguage?: string
+  /** Voice dictation for all profiles. Unset = leave as is. */
+  voiceMode?: 'tap' | 'hold' | 'off'
 }
 
 export interface UpdateStatus {
@@ -114,6 +118,8 @@ export interface Api {
   openInEditor(path: string): Promise<Result>
   spawnTerminal(req: SpawnRequest): Promise<Result<string>>
   writeTerminal(id: string, data: string): void
+  /** Starts/stops Claude Code voice dictation in that terminal (sends the dictation key). */
+  dictate(id: string): void
   resizeTerminal(id: string, cols: number, rows: number): void
   killTerminal(id: string): void
   onTermData(cb: (e: TermDataEvent) => void): () => void
