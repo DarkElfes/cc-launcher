@@ -36,6 +36,10 @@ src/
     usage.ts           per-profile status-line script that records rate_limits (5h/weekly usage)
     profileSettings.ts writes app-level language/voice choices into each profile (settings.json,
                        keybindings.json Alt+K → voice:pushToTalk); leaves unparseable files alone
+    hookServer.ts      local HTTP endpoint for Claude Code hooks (127.0.0.1, per-run token)
+    hooksConfig.ts     writes our http hooks into each profile's settings.json (url ends /ccl-hook)
+    sessions.ts        SessionTracker: per-tab live state from hooks + status-line session files
+    git.ts / history.ts / mcp.ts   panel data: git status, past sessions, `claude mcp list`
     accountInfo.ts     AccountMonitor: email/plan via `claude auth status --json`, limits via
                        `claude -p "/usage"` (local, $0). Never reads credential files.
   preload/index.ts     contextBridge → window.api (the only renderer↔main surface)

@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron'
-import type { Api, TermDataEvent, TermExitEvent, UpdateStatus } from '../shared/types'
+import type { Api, SessionInfo, TermDataEvent, TermExitEvent, UpdateStatus } from '../shared/types'
 
 function listen<T>(channel: string, cb: (payload: T) => void): () => void {
   const handler = (_e: IpcRendererEvent, payload: T) => cb(payload)
@@ -23,6 +23,13 @@ const api: Api = {
   killTerminal: (id) => ipcRenderer.send('term:kill', id),
   onTermData: (cb) => listen<TermDataEvent>('term:data', cb),
   onTermExit: (cb) => listen<TermExitEvent>('term:exit', cb),
+  getSessions: () => ipcRenderer.invoke('sessions:get'),
+  onSessionUpdate: (cb) => listen<SessionInfo>('session:update', cb),
+  notify: (n) => ipcRenderer.send('notify', n),
+  onNotificationClick: (cb) => listen<string>('notify:click', cb),
+  gitInfo: (projectId) => ipcRenderer.invoke('git:info', projectId),
+  listHistory: (projectId) => ipcRenderer.invoke('history:list', projectId),
+  listMcp: (profile, projectId) => ipcRenderer.invoke('mcp:list', profile, projectId),
   refreshAccounts: (profile) => ipcRenderer.invoke('accounts:refresh', profile),
   onStateChanged: (cb) => listen<null>('state:changed', () => cb()),
   checkForUpdates: () => ipcRenderer.invoke('update:check'),

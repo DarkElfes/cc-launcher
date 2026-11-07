@@ -2,6 +2,8 @@ import { randomUUID } from 'node:crypto'
 import * as pty from '@lydell/node-pty'
 
 export interface SpawnOptions {
+  /** Tab id to use (so it can be put in the process env before spawning). */
+  id?: string
   file: string
   args: string[]
   cwd: string
@@ -19,7 +21,7 @@ export class Terminals {
   constructor(private send: Send) {}
 
   spawn(opts: SpawnOptions): string {
-    const id = randomUUID()
+    const id = opts.id ?? randomUUID()
     const p = pty.spawn(opts.file, opts.args, {
       name: 'xterm-256color',
       cols: Math.max(opts.cols, 20),

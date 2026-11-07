@@ -60,6 +60,23 @@ _Last updated: 2026-11-07_
   Ctrl+Space caught. **Not yet tested with a real microphone**, and hold mode inside the app's
   terminal is untested (tap is the recommended mode).
 
+- **0.5.0 (local build, not released)**: session panel and attention signals.
+  - `hookServer.ts`: Claude Code **HTTP hooks** go to a local server (127.0.0.1, random port, per-run secret
+    passed as CCL_HOOK_TOKEN; tab id as CCL_TAB_ID). `hooksConfig.ts` writes them into every profile
+    (our entries end in `/ccl-hook`; the user's own hooks are kept).
+  - `sessions.ts`: per-tab state from hooks (activity, plan, tasks, subagents, background bash, files
+    written) and from the status line's per-session file (model, context, API-price cost, lines, time).
+  - Right **session panel** (toggle in the title bar): Session, Plan, Tasks, Background, Outputs,
+    Changes (git), Connectors (`claude mcp list`, on demand, cached 5 min), History with Resume
+    (`claude --resume <id>`).
+  - **Signals** on tabs and on sidebar projects: needs-you (amber, pulsing), working (spinner), finished
+    and not seen (green), error (red). Seen/idle tabs show nothing. A **Windows notification** fires when
+    Claude needs you, finishes or fails in a tab you're not looking at; clicking it opens that tab.
+  - The account button turns red at ≥90% of either limit.
+  - Tested in a real session (darkness, scratch folder): starting → working → done, Outputs, context
+    44k/1M, cost $0.13, history entry. **Not yet tested live:** needs-you/permission prompts, Windows
+    notifications, plan, tasks, subagents, connectors, Resume.
+
 ## In progress
 - Nothing.
 

@@ -29,6 +29,88 @@ export interface ProfileInfo {
   error?: string
 }
 
+/** What Claude is doing in a tab, from its hooks. */
+export type Activity = 'starting' | 'idle' | 'working' | 'needs-you' | 'done' | 'error' | 'ended'
+
+export interface SessionTask {
+  id: string
+  subject: string
+  status: 'pending' | 'in_progress' | 'completed'
+}
+
+export interface SessionAgent {
+  id: string
+  /** Subagent type, or "bash" for a background command. */
+  kind: string
+  label?: string
+  running: boolean
+  startedAt: number
+  endedAt?: number
+}
+
+export interface SessionOutput {
+  path: string
+  op: 'written' | 'edited'
+  count: number
+  at: number
+}
+
+/** Live info about the Claude Code session in one terminal tab. */
+export interface SessionInfo {
+  tabId: string
+  sessionId?: string
+  sessionName?: string
+  model?: string
+  activity: Activity
+  activityAt: number
+  /** Last assistant message or notification text (shortened). */
+  message?: string
+  error?: string
+  context?: { usedPercent: number | null; tokens: number; size: number }
+  /** Claude Code's own estimate at API list prices (not what a subscription is billed). */
+  costUsd?: number
+  durationMs?: number
+  linesAdded?: number
+  linesRemoved?: number
+  plan?: { text: string; at: number }
+  tasks: SessionTask[]
+  agents: SessionAgent[]
+  outputs: SessionOutput[]
+}
+
+export interface HistorySession {
+  id: string
+  profile: string
+  title: string
+  modifiedAt: number
+  sizeKb: number
+}
+
+export interface McpServer {
+  name: string
+  detail: string
+  status: 'connected' | 'needs-auth' | 'failed' | 'pending' | 'disabled' | 'unknown'
+}
+
+export interface GitChange {
+  path: string
+  status: 'modified' | 'added' | 'deleted' | 'renamed' | 'untracked' | 'conflict'
+  staged: boolean
+  added?: number
+  removed?: number
+}
+
+export interface GitInfo {
+  isRepo: boolean
+  branch?: string
+  ahead?: number
+  behind?: number
+  files: GitChange[]
+  added: number
+  removed: number
+  lastCommit?: { hash: string; subject: string; at: number }
+}
+
 export interface AccountInfo {
   loggedIn: boolean
   email?: string
@@ -93,6 +175,8 @@ export interface SpawnRequest {
   profile: string
   cols: number
   rows: number
+  /** Resume this past session (claude --resume <id>) instead of starting a new one. */
+  resumeSessionId?: string
 }
 
 export type Result<T = null> = { ok: true; value: T } | { ok: false; error: string }
@@ -124,6 +208,15 @@ export interface Api {
   killTerminal(id: string): void
   onTermData(cb: (e: TermDataEvent) => void): () => void
   onTermExit(cb: (e: TermExitEvent) => void): () => void
+  /** Live session info for all open tabs, and updates as they happen. */
+  getSessions(): Promise<Record<string, SessionInfo>>
+  onSessionUpdate(cb: (s: SessionInfo) => void): () => void
+  /** Shows a Windows notification; clicking it calls onNotificationClick with the tab id. */
+  notify(n: { title: string; body: string; tabId: string }): void
+  onNotificationClick(cb: (tabId: string) => void): () => void
+  gitInfo(projectId: string): Promise<Result<GitInfo>>
+  listHistory(projectId: string): Promise<Result<HistorySession[]>>
+  listMcp(profile: string, projectId: string): Promise<Result<McpServer[]>>
   /** Re-reads account email and plan usage (all profiles, or one). */
   refreshAccounts(profile?: string): Promise<Result>
   /** Fires when background data (accounts, usage) changed; call getState() again. */

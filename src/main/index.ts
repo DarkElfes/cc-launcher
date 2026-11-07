@@ -3,8 +3,8 @@ import { randomUUID } from 'node:crypto'
 import { existsSync, rmSync, statSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { basename, join } from 'node:path'
-import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron'
-import type { AppState, ProjectInfo, Result, Settings, SpawnRequest } from '../shared/types'
+import { app, BrowserWindow, dialog, ipcMain, Notification, shell } from 'electron'
+import type { AppState, GitInfo, HistorySession, McpServer, ProjectInfo, Result, Settings, SpawnRequest } from '../shared/types'
 import {
   createProfile,
   ensureAllStatusLines,
@@ -16,7 +16,13 @@ import {
   validateProfileName
 } from './profiles'
 import { AccountMonitor } from './accountInfo'
+import { getGitInfo } from './git'
+import { listHistory } from './history'
+import { HookServer } from './hookServer'
+import { ensureHooks } from './hooksConfig'
+import { listMcp } from './mcp'
 import { applyVoiceSettings, DICTATE_SEQUENCE } from './profileSettings'
+import { pruneSessionFiles, SessionTracker } from './sessions'
 import { Store } from './store'
 import { Terminals } from './terminals'
 import { Updater } from './updater'
@@ -30,8 +36,18 @@ let monitor: AccountMonitor
 const sendToWindow = (channel: string, payload: unknown) => {
   if (win && !win.isDestroyed()) win.webContents.send(channel, payload)
 }
-const terminals = new Terminals(sendToWindow)
+const sessions = new SessionTracker((info) => sendToWindow('session:update', info))
+const terminals = new Terminals((channel, payload) => {
+  if (channel === 'term:exit') sessions.exited((payload as { id: string }).id)
+  sendToWindow(channel, payload)
+})
 const updater = new Updater((s) => sendToWindow('update:status', s))
+const hooks = new HookServer((tabId, event) => sessions.handle(tabId, event))
+
+/** Env for any claude process the app runs for a profile (terminals and background probes). */
+function claudeEnv(profile: string, tabId = ''): Record<string, string> {
+  return { ...profileEnv(profile), CCL_TAB_ID: tabId, CCL_HOOK_TOKEN: hooks.token }
+}
 
 const ok = <T>(value: T): Result<T> => ({ ok: true, value })
 const fail = (e: unknown): { ok: false; error: string } => ({
@@ -63,16 +79,19 @@ function resolveClaude(): string | null {
   return null
 }
 
-/** Writes the app's language/voice choices into one profile (or all). Never throws. */
+/** Writes the app's language/voice choices and hook wiring into one profile (or all). Never throws. */
 function applyProfileSettings(only?: string): void {
   for (const name of only ? [only] : listProfileNames()) {
     try {
       applyVoiceSettings(profileDir(name), store.data.settings)
+      ensureHooks(profileDir(name), hooks.port)
     } catch {
       // A locked or read-only file shouldn't break the app.
     }
   }
 }
+
+const mcpCache = new Map<string, { at: number; servers: McpServer[] }>()
 
 function projectInfo(id: string): ProjectInfo | undefined {
   const p = store.data.projects.find((x) => x.id === id)
@@ -206,7 +225,10 @@ function registerIpc(): void {
     applyProfileSettings(req.profile)
 
     try {
-      const id = terminals.spawn({ file: claude, args: [], cwd, env: profileEnv(req.profile), cols: req.cols, rows: req.rows })
+      const tabId = randomUUID()
+      const args = req.resumeSessionId && /^[A-Za-z0-9-]+$/.test(req.resumeSessionId) ? ['--resume', req.resumeSessionId] : []
+      sessions.open(tabId, profileDir(req.profile))
+      const id = terminals.spawn({ id: tabId, file: claude, args, cwd, env: claudeEnv(req.profile, tabId), cols: req.cols, rows: req.rows })
       if (req.kind === 'project') {
         const p = store.data.projects.find((x) => x.id === req.projectId)
         if (p) {
@@ -223,7 +245,65 @@ function registerIpc(): void {
 
   ipcMain.on('term:write', (_e, id: string, data: string) => terminals.write(id, data))
   ipcMain.on('term:resize', (_e, id: string, cols: number, rows: number) => terminals.resize(id, cols, rows))
-  ipcMain.on('term:kill', (_e, id: string) => terminals.kill(id))
+  ipcMain.on('term:kill', (_e, id: string) => {
+    terminals.kill(id)
+    sessions.close(id)
+  })
+
+  ipcMain.handle('sessions:get', () => sessions.all())
+
+  ipcMain.on('notify', (_e, n: { title: string; body: string; tabId: string }) => {
+    if (!Notification.isSupported()) return
+    const note = new Notification({
+      title: String(n.title).slice(0, 120),
+      body: String(n.body).slice(0, 300),
+      icon: join(app.getAppPath(), 'resources', 'icon.png')
+    })
+    note.on('click', () => {
+      if (!win) return
+      if (win.isMinimized()) win.restore()
+      win.show()
+      win.focus()
+      sendToWindow('notify:click', n.tabId)
+    })
+    note.show()
+  })
+
+  ipcMain.handle('git:info', async (_e, projectId: string): Promise<Result<GitInfo>> => {
+    const p = projectInfo(projectId)
+    if (!p?.exists) return { ok: false, error: 'Project folder not found.' }
+    try {
+      return ok(await getGitInfo(p.path))
+    } catch (e) {
+      return fail(e)
+    }
+  })
+
+  ipcMain.handle('history:list', (_e, projectId: string): Result<HistorySession[]> => {
+    const p = projectInfo(projectId)
+    if (!p) return { ok: false, error: 'Project not found.' }
+    try {
+      return ok(listHistory(p.path, listProfileNames().map((name) => ({ name, dir: profileDir(name) }))))
+    } catch (e) {
+      return fail(e)
+    }
+  })
+
+  ipcMain.handle('mcp:list', async (_e, profile: string, projectId: string): Promise<Result<McpServer[]>> => {
+    const p = projectInfo(projectId)
+    const claude = resolveClaude()
+    if (!p?.exists || !claude || !profileExists(profile)) return { ok: false, error: 'Project, account or Claude Code not found.' }
+    const key = `${profile}|${p.path}`
+    const cached = mcpCache.get(key)
+    if (cached && Date.now() - cached.at < 5 * 60_000) return ok(cached.servers)
+    try {
+      const servers = await listMcp(claude, p.path, claudeEnv(profile))
+      mcpCache.set(key, { at: Date.now(), servers })
+      return ok(servers)
+    } catch (e) {
+      return fail(e)
+    }
+  })
   ipcMain.on('term:dictate', (_e, id: string) => terminals.write(id, DICTATE_SEQUENCE))
 
   ipcMain.handle('accounts:refresh', async (_e, name?: string) => {
@@ -290,8 +370,16 @@ if (!app.requestSingleInstanceLock()) {
     }
   })
 
-  void app.whenReady().then(() => {
+  app.setAppUserModelId('dev.cclauncher.app') // Windows notifications need this
+
+  void app.whenReady().then(async () => {
     store = new Store(join(app.getPath('userData'), 'app.json'))
+    try {
+      await hooks.start() // before profiles are wired to its port
+    } catch {
+      // Without the hook server the app still works; the session panel just stays empty.
+    }
+    pruneSessionFiles(listProfileNames().map(profileDir))
     // Releases are public now; delete the update token older versions may have saved.
     rmSync(join(app.getPath('userData'), 'update-token.bin'), { force: true })
     ensureAllStatusLines()
@@ -299,7 +387,7 @@ if (!app.requestSingleInstanceLock()) {
     monitor = new AccountMonitor(join(app.getPath('userData'), 'usage-probe'), {
       claudePath: resolveClaude,
       profiles: listProfileNames,
-      env: profileEnv,
+      env: (profile) => claudeEnv(profile),
       onChange: () => sendToWindow('state:changed', null)
     })
     registerIpc()
@@ -310,6 +398,7 @@ if (!app.requestSingleInstanceLock()) {
 
   app.on('before-quit', () => {
     monitor?.stop()
+    hooks.stop()
     terminals.killAll()
   })
   app.on('window-all-closed', () => {

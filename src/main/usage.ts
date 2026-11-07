@@ -18,18 +18,31 @@ import type { ProfileUsage, UsageWindow } from '../shared/types'
 
 const SCRIPT_NAME = 'cc-launcher-statusline.ps1'
 const USAGE_FILE = 'cc-launcher-usage.json'
+/** Per-session status files (model, context, cost) read by sessions.ts. */
+export const SESSIONS_DIR = 'cc-launcher-sessions'
 
-const SCRIPT = `# Written by cc-launcher. Saves plan usage (rate_limits) for the app, prints a short status line.
+const SCRIPT = `# Written by cc-launcher. Saves plan usage (rate_limits) and per-session info (model, context,
+# cost) for the app, and prints a short status line.
 $ErrorActionPreference = 'SilentlyContinue'
 $j = [Console]::In.ReadToEnd() | ConvertFrom-Json
+$now = [DateTimeOffset]::UtcNow.ToUnixTimeSeconds()
 if ($j.rate_limits) {
   $out = Join-Path $PSScriptRoot '${USAGE_FILE}'
-  $data = @{ updatedAt = [DateTimeOffset]::UtcNow.ToUnixTimeSeconds(); rate_limits = $j.rate_limits }
+  $data = @{ updatedAt = $now; rate_limits = $j.rate_limits }
+  [IO.File]::WriteAllText("$out.tmp", ($data | ConvertTo-Json -Depth 6 -Compress))
+  Move-Item -LiteralPath "$out.tmp" -Destination $out -Force
+}
+if ($j.session_id -match '^[A-Za-z0-9-]+$') {
+  $dir = Join-Path $PSScriptRoot '${SESSIONS_DIR}'
+  if (-not (Test-Path -LiteralPath $dir)) { New-Item -ItemType Directory -Path $dir | Out-Null }
+  $out = Join-Path $dir ($j.session_id + '.json')
+  $data = @{ updatedAt = $now; tab = $env:CCL_TAB_ID; session_id = $j.session_id; session_name = $j.session_name; model = $j.model; cost = $j.cost; context_window = $j.context_window }
   [IO.File]::WriteAllText("$out.tmp", ($data | ConvertTo-Json -Depth 6 -Compress))
   Move-Item -LiteralPath "$out.tmp" -Destination $out -Force
 }
 $parts = @()
 if ($j.model.display_name) { $parts += $j.model.display_name }
+if ($null -ne $j.context_window.used_percentage) { $parts += ('ctx {0:N0}%' -f [double]$j.context_window.used_percentage) }
 if ($j.rate_limits.five_hour) { $parts += ('5h {0:N0}%' -f [double]$j.rate_limits.five_hour.used_percentage) }
 if ($j.rate_limits.seven_day) { $parts += ('week {0:N0}%' -f [double]$j.rate_limits.seven_day.used_percentage) }
 [Console]::Out.Write(($parts -join ' | '))

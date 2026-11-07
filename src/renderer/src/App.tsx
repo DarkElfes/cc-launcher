@@ -1,5 +1,15 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { FolderSimpleIcon, GearSixIcon, MicrophoneIcon, PlusIcon, SquaresFourIcon, UsersThreeIcon, WarningIcon, XIcon } from '@phosphor-icons/react'
+import {
+  FolderSimpleIcon,
+  GearSixIcon,
+  MicrophoneIcon,
+  PlusIcon,
+  SidebarSimpleIcon,
+  SquaresFourIcon,
+  UsersThreeIcon,
+  WarningIcon,
+  XIcon
+} from '@phosphor-icons/react'
 import { toast } from 'sonner'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
@@ -23,8 +33,10 @@ import { Toaster } from '@/components/ui/sonner'
 import { TooltipProvider } from '@/components/ui/tooltip'
 import { cn } from '@/lib/utils'
 import { ConfirmProvider, useConfirm } from '@/components/confirm'
-import type { AppState, ProjectInfo, SpawnRequest } from '../../shared/types'
+import type { AppState, HistorySession, ProjectInfo, SessionInfo, SpawnRequest } from '../../shared/types'
 import iconUrl from '../../../build/icon.svg'
+import { SignalDot, signalOf, strongest } from './activity'
+import { SessionPanel } from './panel'
 import { forget } from './termBus'
 import { TerminalPane } from './TerminalPane'
 import { AccountsView, Dashboard, ProjectView, SettingsView } from './views'
@@ -45,8 +57,18 @@ export interface Tab {
 /** Key for the group of tabs shown in a view: a project id, or "accounts" for sign-in tabs. */
 const groupOf = (t: Tab) => (t.kind === 'login' ? 'accounts' : t.projectId!)
 
+const PANEL_KEY = 'ccl.panelOpen'
+const readPanelPref = () => {
+  try {
+    return localStorage.getItem(PANEL_KEY) !== '0'
+  } catch {
+    return true
+  }
+}
+
 /** Draggable top bar of the main area. Windows draws min/max/close over its right end. */
-function TitleBar({ view, project }: { view: View; project?: ProjectInfo }) {
+function TitleBar(props: { view: View; project?: ProjectInfo; panelOpen?: boolean; onTogglePanel?: () => void }) {
+  const { view, project } = props
   const crumbs =
     view.kind === 'project'
       ? ['Projects', project?.name ?? '']
@@ -59,6 +81,17 @@ function TitleBar({ view, project }: { view: View; project?: ProjectInfo }) {
           {c}
         </span>
       ))}
+      {props.onTogglePanel && (
+        <Button
+          variant="ghost"
+          size="icon-xs"
+          className={cn('ml-auto', props.panelOpen && 'text-foreground')}
+          title={props.panelOpen ? 'Hide session panel' : 'Show session panel'}
+          onClick={props.onTogglePanel}
+        >
+          <SidebarSimpleIcon className="-scale-x-100" />
+        </Button>
+      )}
     </header>
   )
 }
@@ -80,23 +113,76 @@ function Shell() {
   const [view, setView] = useState<View>({ kind: 'dashboard' })
   const [tabs, setTabs] = useState<Tab[]>([])
   const [activeTab, setActiveTab] = useState<Record<string, string>>({})
+  const [sessions, setSessions] = useState<Record<string, SessionInfo>>({})
+  /** Tabs whose finished/failed result you haven't looked at yet. */
+  const [unseen, setUnseen] = useState<Record<string, true>>({})
+  const [panelOpen, setPanelOpen] = useState(readPanelPref)
+  /** Bumped when Claude finishes in some tab, so git changes / history reload. */
+  const [tick, setTick] = useState(0)
+
+  // Latest values for event handlers registered once.
+  const live = useRef({ tabs, view, activeTab, state, sessions })
+  live.current = { tabs, view, activeTab, state, sessions }
 
   const refresh = useCallback(async () => setState(await window.api.getState()), [])
 
+  const isTabVisible = (tabId: string) => {
+    const { tabs, view, activeTab } = live.current
+    const tab = tabs.find((t) => t.id === tabId)
+    if (!tab || !document.hasFocus()) return false
+    const group = view.kind === 'project' ? view.id : view.kind === 'accounts' ? 'accounts' : null
+    return group === groupOf(tab) && activeTab[group] === tabId
+  }
+
+  /** Marks a tab as unseen and notifies, unless you're looking at it right now. */
+  const attention = (info: SessionInfo) => {
+    if (isTabVisible(info.tabId)) return
+    const { tabs, state } = live.current
+    const tab = tabs.find((t) => t.id === info.tabId)
+    if (!tab) return
+    setUnseen((u) => ({ ...u, [info.tabId]: true }))
+    const where = state?.projects.find((p) => p.id === tab.projectId)?.name ?? 'sign-in'
+    const title =
+      info.activity === 'needs-you'
+        ? `Claude needs you · ${where}`
+        : info.activity === 'error'
+          ? `Claude stopped with an error · ${where}`
+          : `Claude finished · ${where}`
+    const body =
+      info.activity === 'error'
+        ? (info.error ?? 'The request failed.')
+        : (info.message ?? (info.activity === 'needs-you' ? 'Waiting for your permission or answer.' : 'Done.'))
+    window.api.notify({ title: `${title} (${tab.profile})`, body, tabId: info.tabId })
+  }
+
   useEffect(() => {
     void refresh()
+    void window.api.getSessions().then(setSessions)
     const onFocus = () => void refresh()
     window.addEventListener('focus', onFocus)
     // Usage numbers are written by running Claude Code sessions; pick them up regularly.
     const poll = setInterval(() => document.visibilityState === 'visible' && void refresh(), 20_000)
     const off = window.api.onTermExit(({ id, exitCode }) => {
-      setTabs((ts) => {
-        // A session ended: login state or usage may have changed for that account.
-        const tab = ts.find((t) => t.id === id)
-        if (tab) void window.api.refreshAccounts(tab.profile)
-        return ts.map((t) => (t.id === id ? { ...t, exitCode } : t))
-      })
+      const tab = live.current.tabs.find((t) => t.id === id)
+      // A session ended: login state or usage may have changed for that account.
+      if (tab) void window.api.refreshAccounts(tab.profile)
+      setTabs((ts) => ts.map((t) => (t.id === id ? { ...t, exitCode } : t)))
       void refresh()
+    })
+    const offSession = window.api.onSessionUpdate((info) => {
+      const prev = live.current.sessions[info.tabId]
+      setSessions((s) => ({ ...s, [info.tabId]: info }))
+      if (prev?.activity !== info.activity) {
+        if (info.activity === 'needs-you' || info.activity === 'done' || info.activity === 'error') attention(info)
+        if (info.activity === 'done' || info.activity === 'ended') setTick((t) => t + 1)
+        if (info.activity === 'working') setUnseen(({ [info.tabId]: _, ...rest }) => rest)
+      }
+    })
+    const offClick = window.api.onNotificationClick((tabId) => {
+      const tab = live.current.tabs.find((t) => t.id === tabId)
+      if (!tab) return
+      setView(tab.kind === 'login' ? { kind: 'accounts' } : { kind: 'project', id: tab.projectId! })
+      setActiveTab((a) => ({ ...a, [groupOf(tab)]: tab.id }))
     })
     const offState = window.api.onStateChanged(() => void refresh())
     const offUpdate = window.api.onUpdateStatus((update) => {
@@ -114,9 +200,12 @@ function Shell() {
       window.removeEventListener('focus', onFocus)
       clearInterval(poll)
       off()
+      offSession()
+      offClick()
       offState()
       offUpdate()
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [refresh])
 
   const openTerminal = useCallback(
@@ -145,6 +234,8 @@ function Shell() {
         return
       window.api.killTerminal(tab.id)
       forget(tab.id)
+      setSessions(({ [tab.id]: _, ...rest }) => rest)
+      setUnseen(({ [tab.id]: _, ...rest }) => rest)
       setTabs((ts) => {
         const rest = ts.filter((t) => t.id !== tab.id)
         const group = groupOf(tab)
@@ -193,6 +284,15 @@ function Shell() {
     return m
   }, [tabs])
 
+  /** Signal per tab and the strongest one per group (project / accounts). */
+  const tabSignal = (t: Tab) => (t.exitCode !== undefined ? null : signalOf(sessions[t.id]?.activity, !!unseen[t.id]))
+  const groupSignal = useMemo(() => {
+    const m: Record<string, ReturnType<typeof strongest>> = {}
+    for (const t of tabs) m[groupOf(t)] = strongest([m[groupOf(t)] ?? null, tabSignal(t)])
+    return m
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tabs, sessions, unseen])
+
   // ---- Voice dictation (Dictate button / Ctrl+Space) ----
   const activeTabObj = (() => {
     const group = view.kind === 'project' ? view.id : view.kind === 'accounts' ? 'accounts' : null
@@ -201,6 +301,15 @@ function Shell() {
   })()
   const activeId = activeTabObj?.id
   const voiceTap = state?.settings.voiceMode === 'tap'
+
+  // Looking at a tab (window focused) clears its "unseen" mark.
+  useEffect(() => {
+    if (!activeId) return
+    const clear = () => document.hasFocus() && setUnseen(({ [activeId]: _, ...rest }) => rest)
+    clear()
+    window.addEventListener('focus', clear)
+    return () => window.removeEventListener('focus', clear)
+  }, [activeId, view])
 
   // When voice was turned on in this run: sessions started earlier don't have it yet.
   const voiceOnSince = useRef(0)
@@ -265,12 +374,30 @@ function Shell() {
     return () => window.removeEventListener('keydown', onKey, true)
   }, [activeTabObj, dictate])
 
+  const togglePanel = useCallback(() => {
+    setPanelOpen((open) => {
+      try {
+        localStorage.setItem(PANEL_KEY, open ? '0' : '1')
+      } catch {
+        // storage unavailable: just don't remember
+      }
+      return !open
+    })
+  }, [])
+
   if (!state) return <div className="p-8 text-sm text-muted-foreground">Loading…</div>
 
   const currentGroup = view.kind === 'project' ? view.id : view.kind === 'accounts' ? 'accounts' : null
   const project = view.kind === 'project' ? state.projects.find((p) => p.id === view.id) : undefined
   const groupTabs = currentGroup ? tabs.filter((t) => groupOf(t) === currentGroup) : []
   const showTerminals = currentGroup !== null
+  const showPanel = view.kind === 'project' && !!project && panelOpen
+
+  // The panel follows the selected tab of this project (even if its process already exited).
+  const panelTab = project ? tabs.find((t) => t.id === activeTab[project.id]) : undefined
+  const openSessionIds = new Set(
+    tabs.filter((t) => t.exitCode === undefined).map((t) => sessions[t.id]?.sessionId).filter((x): x is string => !!x)
+  )
 
   return (
     <SidebarProvider className="h-full min-h-0">
@@ -307,7 +434,12 @@ function Shell() {
                       <FolderSimpleIcon />
                       <span>{p.name}</span>
                     </SidebarMenuButton>
-                    {running[p.id] ? <SidebarMenuBadge>{running[p.id]}</SidebarMenuBadge> : null}
+                    {running[p.id] ? (
+                      <SidebarMenuBadge className="gap-1.5">
+                        <SignalDot signal={groupSignal[p.id] ?? null} />
+                        {running[p.id]}
+                      </SidebarMenuBadge>
+                    ) : null}
                   </SidebarMenuItem>
                 ))}
                 {state.projects.length === 0 && (
@@ -324,7 +456,12 @@ function Shell() {
                 <UsersThreeIcon />
                 <span>Accounts</span>
               </SidebarMenuButton>
-              {running.accounts ? <SidebarMenuBadge>{running.accounts}</SidebarMenuBadge> : null}
+              {running.accounts ? (
+                <SidebarMenuBadge className="gap-1.5">
+                  <SignalDot signal={groupSignal.accounts ?? null} />
+                  {running.accounts}
+                </SidebarMenuBadge>
+              ) : null}
             </SidebarMenuItem>
             <SidebarMenuItem>
               <SidebarMenuButton isActive={view.kind === 'settings'} onClick={() => setView({ kind: 'settings' })}>
@@ -337,105 +474,130 @@ function Shell() {
       </Sidebar>
 
       <SidebarInset className="flex min-h-0 min-w-0 flex-col overflow-hidden">
-        <TitleBar view={view} project={project} />
-        {!state.claudePath && (
-          <Alert variant="destructive" className="m-4 mb-0 w-auto">
-            <WarningIcon />
-            <AlertTitle>Claude Code was not found</AlertTitle>
-            <AlertDescription>Install it, or set the path to claude.exe in Settings.</AlertDescription>
-          </Alert>
-        )}
+        <TitleBar
+          view={view}
+          project={project}
+          panelOpen={panelOpen}
+          onTogglePanel={view.kind === 'project' && project ? togglePanel : undefined}
+        />
+        <div className="flex min-h-0 flex-1">
+          <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+            {!state.claudePath && (
+              <Alert variant="destructive" className="m-4 mb-0 w-auto">
+                <WarningIcon />
+                <AlertTitle>Claude Code was not found</AlertTitle>
+                <AlertDescription>Install it, or set the path to claude.exe in Settings.</AlertDescription>
+              </Alert>
+            )}
 
-        {view.kind === 'dashboard' && (
-          <Dashboard state={state} running={running} onOpen={(id) => setView({ kind: 'project', id })} onAdd={addProject} />
-        )}
-        {view.kind === 'project' && project && (
-          <ProjectView
-            project={project}
-            profiles={state.profiles}
-            onLaunch={(profile) => openTerminal({ kind: 'project', projectId: project.id, profile })}
-            onRemove={() => removeProject(project)}
-          />
-        )}
-        {view.kind === 'project' && !project && <p className="p-8 text-sm text-muted-foreground">This project was removed.</p>}
-        {view.kind === 'accounts' && (
-          <AccountsView
-            profiles={state.profiles}
-            refreshing={state.accountsRefreshing}
-            onChanged={refresh}
-            onSignIn={(profile) => openTerminal({ kind: 'login', profile })}
-          />
-        )}
-        {view.kind === 'settings' && <SettingsView state={state} onSaved={refresh} />}
+            {view.kind === 'dashboard' && (
+              <Dashboard state={state} running={running} onOpen={(id) => setView({ kind: 'project', id })} onAdd={addProject} />
+            )}
+            {view.kind === 'project' && project && (
+              <ProjectView
+                project={project}
+                profiles={state.profiles}
+                onLaunch={(profile) => openTerminal({ kind: 'project', projectId: project.id, profile })}
+                onRemove={() => removeProject(project)}
+              />
+            )}
+            {view.kind === 'project' && !project && <p className="p-8 text-sm text-muted-foreground">This project was removed.</p>}
+            {view.kind === 'accounts' && (
+              <AccountsView
+                profiles={state.profiles}
+                refreshing={state.accountsRefreshing}
+                onChanged={refresh}
+                onSignIn={(profile) => openTerminal({ kind: 'login', profile })}
+              />
+            )}
+            {view.kind === 'settings' && <SettingsView state={state} onSaved={refresh} />}
 
-        <section className={cn('min-h-0 flex-1 flex-col border-t', showTerminals ? 'flex' : 'hidden')}>
-          {groupTabs.length > 0 && (
-            <div className="flex shrink-0 gap-px overflow-x-auto border-b bg-sidebar">
-              {groupTabs.map((t) => {
-                const active = activeTab[currentGroup!] === t.id
-                return (
-                  <div
-                    key={t.id}
-                    onClick={() => setActiveTab((a) => ({ ...a, [currentGroup!]: t.id }))}
-                    className={cn(
-                      'flex cursor-pointer items-center gap-2 border-r py-1 pr-1 pl-3 text-xs whitespace-nowrap text-muted-foreground',
-                      active && 'bg-background text-foreground'
-                    )}
-                  >
-                    <ProfileTag name={t.profile} />
-                    <span className={cn(t.exitCode !== undefined && 'line-through')}>{t.kind === 'login' ? 'sign in' : 'claude'}</span>
-                    <Button
-                      variant="ghost"
-                      size="icon-xs"
-                      title="Close tab"
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        void closeTab(t)
-                      }}
-                    >
-                      <XIcon />
-                    </Button>
-                  </div>
-                )
-              })}
-              {activeTabObj && (
-                <div className="ml-auto flex items-center pr-2">
-                  <Button
-                    variant="ghost"
-                    size="xs"
-                    className={cn(!voiceTap && 'text-muted-foreground')}
-                    title={
-                      voiceTap
-                        ? 'Voice dictation: click (or Ctrl+Space) to start talking, again to send'
-                        : 'Voice dictation is off. Click to turn it on.'
-                    }
-                    onClick={() => dictate(activeTabObj)}
-                  >
-                    <MicrophoneIcon data-icon="inline-start" />
-                    {voiceTap ? 'Dictate' : 'Dictate (off)'}
-                    <kbd className="ml-1 text-[10px] text-muted-foreground">Ctrl+Space</kbd>
-                  </Button>
+            <section className={cn('min-h-0 flex-1 flex-col border-t', showTerminals ? 'flex' : 'hidden')}>
+              {groupTabs.length > 0 && (
+                <div className="flex shrink-0 gap-px overflow-x-auto border-b bg-sidebar">
+                  {groupTabs.map((t) => {
+                    const active = activeTab[currentGroup!] === t.id
+                    return (
+                      <div
+                        key={t.id}
+                        onClick={() => setActiveTab((a) => ({ ...a, [currentGroup!]: t.id }))}
+                        className={cn(
+                          'flex cursor-pointer items-center gap-2 border-r py-1 pr-1 pl-3 text-xs whitespace-nowrap text-muted-foreground',
+                          active && 'bg-background text-foreground'
+                        )}
+                      >
+                        <SignalDot signal={tabSignal(t)} />
+                        <ProfileTag name={t.profile} />
+                        <span className={cn(t.exitCode !== undefined && 'line-through')}>
+                          {t.kind === 'login' ? 'sign in' : (sessions[t.id]?.sessionName?.slice(0, 28) ?? 'claude')}
+                        </span>
+                        <Button
+                          variant="ghost"
+                          size="icon-xs"
+                          title="Close tab"
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            void closeTab(t)
+                          }}
+                        >
+                          <XIcon />
+                        </Button>
+                      </div>
+                    )
+                  })}
+                  {activeTabObj && (
+                    <div className="ml-auto flex items-center pr-2">
+                      <Button
+                        variant="ghost"
+                        size="xs"
+                        className={cn(!voiceTap && 'text-muted-foreground')}
+                        title={
+                          voiceTap
+                            ? 'Voice dictation: click (or Ctrl+Space) to start talking, again to send'
+                            : 'Voice dictation is off. Click to turn it on.'
+                        }
+                        onClick={() => dictate(activeTabObj)}
+                      >
+                        <MicrophoneIcon data-icon="inline-start" />
+                        {voiceTap ? 'Dictate' : 'Dictate (off)'}
+                        <kbd className="ml-1 text-[10px] text-muted-foreground">Ctrl+Space</kbd>
+                      </Button>
+                    </div>
+                  )}
                 </div>
               )}
-            </div>
-          )}
-          <div className="relative min-h-0 flex-1 bg-background">
-            {/* Every terminal stays mounted; only the active one in the current view is shown. */}
-            {tabs.map((t) => (
-              <TerminalPane
-                key={t.id}
-                id={t.id}
-                exitCode={t.exitCode}
-                active={showTerminals && groupOf(t) === currentGroup && activeTab[currentGroup!] === t.id}
-              />
-            ))}
-            {showTerminals && groupTabs.length === 0 && (
-              <p className="p-6 text-xs text-muted-foreground">
-                {view.kind === 'accounts' ? 'Sign-in terminals appear here.' : 'No Claude Code session open. Pick an account above to start one.'}
-              </p>
-            )}
+              <div className="relative min-h-0 flex-1 bg-background">
+                {/* Every terminal stays mounted; only the active one in the current view is shown. */}
+                {tabs.map((t) => (
+                  <TerminalPane
+                    key={t.id}
+                    id={t.id}
+                    exitCode={t.exitCode}
+                    active={showTerminals && groupOf(t) === currentGroup && activeTab[currentGroup!] === t.id}
+                  />
+                ))}
+                {showTerminals && groupTabs.length === 0 && (
+                  <p className="p-6 text-xs text-muted-foreground">
+                    {view.kind === 'accounts' ? 'Sign-in terminals appear here.' : 'No Claude Code session open. Pick an account above to start one.'}
+                  </p>
+                )}
+              </div>
+            </section>
           </div>
-        </section>
+
+          {showPanel && (
+            <SessionPanel
+              project={project!}
+              session={panelTab ? sessions[panelTab.id] : undefined}
+              profile={panelTab ? state.profiles.find((p) => p.name === panelTab.profile) : undefined}
+              tick={tick}
+              openSessionIds={openSessionIds}
+              onResume={(h: HistorySession) =>
+                void openTerminal({ kind: 'project', projectId: project!.id, profile: h.profile, resumeSessionId: h.id })
+              }
+            />
+          )}
+        </div>
       </SidebarInset>
     </SidebarProvider>
   )

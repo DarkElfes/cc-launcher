@@ -22,6 +22,12 @@ import { cn } from '@/lib/utils'
 import type { AppState, ProfileInfo, ProjectInfo, Result } from '../../shared/types'
 import { AccountLine, ProfileTag, showError, SignedIn, timeAgo, UsageInline, UsageMeter } from './ui'
 
+/** True when either limit window of the account is at 90% or more. */
+function usageHot(p: ProfileInfo): boolean {
+  const pct = (w?: { usedPercent: number; stale: boolean }) => (w && !w.stale ? w.usedPercent : 0)
+  return Math.max(pct(p.usage?.fiveHour), pct(p.usage?.week)) >= 90
+}
+
 async function run<T>(p: Promise<Result<T>>): Promise<T | undefined> {
   const r = await p
   if (!r.ok) {
@@ -158,11 +164,15 @@ export function ProjectView(props: {
               key={p.name}
               variant="outline"
               size="sm"
-              className={cn(project.lastProfile === p.name && 'border-primary')}
+              className={cn(
+                project.lastProfile === p.name && 'border-primary',
+                usageHot(p) && 'border-red-500/60 text-red-300'
+              )}
               title={
-                p.signedIn
+                (usageHot(p) ? 'Almost out of limit on this account; pick another one if you can.\n' : '') +
+                (p.signedIn
                   ? `${p.account?.email ?? ''}${p.account?.plan ? ` (${p.account.plan})` : ''}\n${p.dir}`.trim()
-                  : `${p.dir}\nNot signed in yet. Claude Code will ask you to log in.`
+                  : `${p.dir}\nNot signed in yet. Claude Code will ask you to log in.`)
               }
               onClick={() => props.onLaunch(p.name)}
             >
