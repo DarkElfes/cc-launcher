@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react'
 import { Terminal } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
-import { attachSink } from './termBus'
+import { attachSink, imagePathsText, registerPaster } from './termBus'
 
 interface Props {
   id: string
@@ -64,11 +64,49 @@ export function TerminalPane({ id, active, exitCode }: Props) {
         t.clearSelection()
         return false
       }
-      if (key === 'v') return false // let the browser fire a paste event, which xterm handles
+      if (key === 'v') {
+        // Our own paste: an image in the clipboard is saved to a file and its path pasted (Claude Code
+        // attaches images by path); otherwise paste the text.
+        e.preventDefault()
+        void (async () => {
+          const imagePath = await window.api.saveClipboardImage()
+          if (imagePath) t.paste(imagePathsText([imagePath]))
+          else {
+            const text = await navigator.clipboard.readText().catch(() => '')
+            if (text) t.paste(text)
+          }
+        })()
+        return false
+      }
       return true
     })
 
     const detach = attachSink(id, (data) => t.write(data))
+    const unregisterPaster = registerPaster(id, (text) => {
+      t.paste(text)
+      t.focus()
+    })
+
+    // Drag files (e.g. screenshots) onto the terminal: paste their paths.
+    const el = host.current!
+    const onDragOver = (e: DragEvent) => {
+      if (e.dataTransfer?.types.includes('Files')) {
+        e.preventDefault()
+        e.dataTransfer.dropEffect = 'copy'
+      }
+    }
+    const onDrop = (e: DragEvent) => {
+      const files = [...(e.dataTransfer?.files ?? [])]
+      if (!files.length) return
+      e.preventDefault()
+      const paths = files.map((f) => window.api.pathForFile(f)).filter(Boolean)
+      if (paths.length) {
+        t.paste(imagePathsText(paths))
+        t.focus()
+      }
+    }
+    el.addEventListener('dragover', onDragOver)
+    el.addEventListener('drop', onDrop)
     const input = t.onData((data) => window.api.writeTerminal(id, data))
 
     const refit = () => {
@@ -88,6 +126,9 @@ export function TerminalPane({ id, active, exitCode }: Props) {
       ro.disconnect()
       input.dispose()
       detach()
+      unregisterPaster()
+      el.removeEventListener('dragover', onDragOver)
+      el.removeEventListener('drop', onDrop)
       t.dispose()
       term.current = null
     }

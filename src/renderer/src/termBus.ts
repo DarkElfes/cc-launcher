@@ -28,4 +28,25 @@ export function attachSink(id: string, sink: Sink): () => void {
 export function forget(id: string): void {
   sinks.delete(id)
   pending.delete(id)
+  pasters.delete(id)
 }
+
+// Pasting into a terminal goes through xterm (bracketed paste), so Claude Code sees it as a paste.
+// That's how it turns a pasted image path into an image attachment.
+const pasters = new Map<string, (text: string) => void>()
+
+export function registerPaster(id: string, paste: (text: string) => void): () => void {
+  pasters.set(id, paste)
+  return () => {
+    if (pasters.get(id) === paste) pasters.delete(id)
+  }
+}
+
+export function pasteInto(id: string, text: string): void {
+  const paste = pasters.get(id)
+  if (paste) paste(text)
+  else window.api.writeTerminal(id, text)
+}
+
+/** Quoted image paths, ready to paste into a Claude prompt. */
+export const imagePathsText = (paths: string[]) => paths.map((p) => `"${p}"`).join(' ') + ' '

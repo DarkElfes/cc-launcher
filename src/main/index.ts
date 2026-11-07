@@ -1,9 +1,9 @@
 import { spawn as spawnProcess } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
-import { existsSync, rmSync, statSync } from 'node:fs'
+import { existsSync, mkdirSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { basename, join } from 'node:path'
-import { app, BrowserWindow, dialog, ipcMain, Notification, shell } from 'electron'
+import { app, BrowserWindow, clipboard, dialog, ipcMain, Notification, shell } from 'electron'
 import type { AppState, GitInfo, HistorySession, McpServer, ProjectInfo, Result, Settings, SpawnRequest } from '../shared/types'
 import {
   createProfile,
@@ -93,6 +93,20 @@ function applyProfileSettings(only?: string): void {
 }
 
 const mcpCache = new Map<string, { at: number; servers: McpServer[] }>()
+
+/** Pasted screenshots are only needed while Claude reads them; drop ones older than 14 days. */
+function prunePastedImages(): void {
+  const dir = join(app.getPath('userData'), 'pasted-images')
+  if (!existsSync(dir)) return
+  const cutoff = Date.now() - 14 * 86_400_000
+  for (const f of readdirSync(dir)) {
+    try {
+      if (statSync(join(dir, f)).mtimeMs < cutoff) rmSync(join(dir, f), { force: true })
+    } catch {
+      // ignore
+    }
+  }
+}
 
 function projectInfo(id: string): ProjectInfo | undefined {
   const p = store.data.projects.find((x) => x.id === id)
@@ -317,6 +331,34 @@ function registerIpc(): void {
   })
   ipcMain.on('term:dictate', (_e, id: string) => terminals.write(id, DICTATE_SEQUENCE))
 
+  // Images for Claude: Claude Code reads image files whose path is in the prompt.
+  ipcMain.handle('clipboard:saveImage', async (): Promise<string | null> => {
+    try {
+      for (const item of await clipboard.read()) {
+        const type = item.types.find((t) => t.startsWith('image/'))
+        if (!type) continue
+        const blob = (await item.getType(type)) as Blob
+        const ext = { 'image/jpeg': 'jpg', 'image/gif': 'gif', 'image/webp': 'webp' }[type] ?? 'png'
+        const dir = join(app.getPath('userData'), 'pasted-images')
+        mkdirSync(dir, { recursive: true })
+        const file = join(dir, `paste-${new Date().toISOString().replace(/[:.]/g, '-')}.${ext}`)
+        writeFileSync(file, Buffer.from(await blob.arrayBuffer()))
+        return file
+      }
+    } catch {
+      // unreadable clipboard: treat as no image
+    }
+    return null
+  })
+  ipcMain.handle('dialog:pickImages', async () => {
+    const res = await dialog.showOpenDialog(win!, {
+      title: 'Attach images for Claude',
+      properties: ['openFile', 'multiSelections'],
+      filters: [{ name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'gif', 'webp'] }]
+    })
+    return res.canceled ? [] : res.filePaths
+  })
+
   ipcMain.handle('accounts:refresh', async (_e, name?: string) => {
     await monitor.refresh(name)
     return ok(null)
@@ -391,6 +433,7 @@ if (!app.requestSingleInstanceLock()) {
       // Without the hook server the app still works; the session panel just stays empty.
     }
     pruneSessionFiles(listProfileNames().map(profileDir))
+    prunePastedImages()
     // Releases are public now; delete the update token older versions may have saved.
     rmSync(join(app.getPath('userData'), 'update-token.bin'), { force: true })
     ensureAllStatusLines()

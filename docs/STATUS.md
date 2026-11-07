@@ -89,6 +89,14 @@ _Last updated: 2026-11-07_
   - Tested end-to-end darkness → tree in a scratch folder. Note: even this tiny test used ~3% of tree's
     weekly limit (each new session sends ~45k tokens of system prompt/context).
 
+- **0.7.0 (local build, not released)**: images for Claude, like in the chat app.
+  - **Ctrl+V** with an image on the clipboard: main saves it to `%APPDATA%\cc-launcher\pasted-images\*.png`
+    (pruned after 14 days) and the path is pasted via xterm's bracketed paste. Claude Code turns it into
+    an `[Image #N]` attachment. Ctrl+V with text pastes text as before.
+  - **Drag & drop** files onto the terminal pastes their paths (`webUtils.getPathForFile`).
+  - **Image** button in the tab bar: file picker for png/jpg/gif/webp.
+  - Tested: clipboard screenshot → `[Image #1]` in a real darkness session (not sent).
+
 ## In progress
 - Nothing.
 

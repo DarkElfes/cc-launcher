@@ -210,6 +210,12 @@ export interface Api {
   writeTerminal(id: string, data: string): void
   /** Starts/stops Claude Code voice dictation in that terminal (sends the dictation key). */
   dictate(id: string): void
+  /** If the clipboard holds an image, saves it as a PNG file and returns its path; else null. */
+  saveClipboardImage(): Promise<string | null>
+  /** File picker for images; returns chosen paths (empty if cancelled). */
+  pickImages(): Promise<string[]>
+  /** Real path of a dropped file. */
+  pathForFile(file: File): string
   resizeTerminal(id: string, cols: number, rows: number): void
   killTerminal(id: string): void
   onTermData(cb: (e: TermDataEvent) => void): () => void

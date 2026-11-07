@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   FolderSimpleIcon,
   GearSixIcon,
+  ImageIcon,
   MicrophoneIcon,
   PlusIcon,
   SidebarSimpleIcon,
@@ -38,7 +39,7 @@ import iconUrl from '../../../build/icon.svg'
 import { SignalDot, signalOf, strongest } from './activity'
 import { CONTINUE_PROMPT, HANDOFF_PROMPT, HandoffDialog, type HandoffMode } from './handoff'
 import { SessionPanel } from './panel'
-import { forget } from './termBus'
+import { forget, imagePathsText, pasteInto } from './termBus'
 import { TerminalPane } from './TerminalPane'
 import { AccountsView, Dashboard, ProjectView, SettingsView } from './views'
 import { ProfileTag, showError } from './ui'
@@ -635,7 +636,19 @@ function Shell() {
                     )
                   })}
                   {activeTabObj && (
-                    <div className="ml-auto flex items-center pr-2">
+                    <div className="ml-auto flex items-center gap-1 pr-2">
+                      <Button
+                        variant="ghost"
+                        size="xs"
+                        title="Attach images for Claude (you can also paste a screenshot with Ctrl+V or drag files onto the terminal)"
+                        onClick={async () => {
+                          const paths = await window.api.pickImages()
+                          if (paths.length) pasteInto(activeTabObj.id, imagePathsText(paths))
+                        }}
+                      >
+                        <ImageIcon data-icon="inline-start" />
+                        Image
+                      </Button>
                       <Button
                         variant="ghost"
                         size="xs"

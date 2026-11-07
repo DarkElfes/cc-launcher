@@ -1,4 +1,4 @@
-import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron'
+import { contextBridge, ipcRenderer, webUtils, type IpcRendererEvent } from 'electron'
 import type { Api, SessionInfo, TermDataEvent, TermExitEvent, UpdateStatus } from '../shared/types'
 
 function listen<T>(channel: string, cb: (payload: T) => void): () => void {
@@ -19,6 +19,9 @@ const api: Api = {
   spawnTerminal: (req) => ipcRenderer.invoke('term:spawn', req),
   writeTerminal: (id, data) => ipcRenderer.send('term:write', id, data),
   dictate: (id) => ipcRenderer.send('term:dictate', id),
+  saveClipboardImage: () => ipcRenderer.invoke('clipboard:saveImage'),
+  pickImages: () => ipcRenderer.invoke('dialog:pickImages'),
+  pathForFile: (file) => webUtils.getPathForFile(file),
   resizeTerminal: (id, cols, rows) => ipcRenderer.send('term:resize', id, cols, rows),
   killTerminal: (id) => ipcRenderer.send('term:kill', id),
   onTermData: (cb) => listen<TermDataEvent>('term:data', cb),
