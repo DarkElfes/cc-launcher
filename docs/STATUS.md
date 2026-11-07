@@ -97,6 +97,14 @@ _Last updated: 2026-11-07_
   - **Image** button in the tab bar: file picker for png/jpg/gif/webp.
   - Tested: clipboard screenshot → `[Image #1]` in a real darkness session (not sent).
 
+- **0.8.0 (local build, not released)**: **message box** under the Claude terminal (`composer.tsx`):
+  normal text editing, Enter sends, Shift+Enter adds a new line, ↑/↓ recalls sent messages, per-tab drafts,
+  images by Ctrl+V / drag & drop / button shown as chips. Sending pastes images one at a time and then
+  the text via bracketed paste (newlines kept, paths become [Image #N]), then Enter. Sending is blocked
+  while Claude waits for an answer in the terminal (permission/menus). Tested: a 2-line message arrives as one prompt.
+  - `pnpm release` now creates a **draft**, uploads each file with 3 retries, then publishes. v0.7.0's
+    installer upload had broken and left a draft; it was fixed by hand.
+
 ## In progress
 - Nothing.
 

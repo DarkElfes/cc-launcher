@@ -38,6 +38,7 @@ import type { AppState, HistorySession, ProjectInfo, SessionInfo, SpawnRequest }
 import iconUrl from '../../../build/icon.svg'
 import { SignalDot, signalOf, strongest } from './activity'
 import { CONTINUE_PROMPT, HANDOFF_PROMPT, HandoffDialog, type HandoffMode } from './handoff'
+import { Composer } from './composer'
 import { SessionPanel } from './panel'
 import { forget, imagePathsText, pasteInto } from './termBus'
 import { TerminalPane } from './TerminalPane'
@@ -684,6 +685,9 @@ function Shell() {
                   </p>
                 )}
               </div>
+              {activeTabObj?.kind === 'project' && (
+                <Composer tabId={activeTabObj.id} activity={sessions[activeTabObj.id]?.activity} />
+              )}
             </section>
           </div>
 
