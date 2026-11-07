@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState, type ClipboardEvent, type DragEvent, type KeyboardEvent } from 'react'
-import { ImageIcon, PaperPlaneRightIcon, WarningCircleIcon, XIcon } from '@phosphor-icons/react'
+import { ImageIcon, InfoIcon, PaperPlaneRightIcon, WarningCircleIcon, XIcon } from '@phosphor-icons/react'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { cn } from '@/lib/utils'
 import type { Activity } from '../../shared/types'
 import { pasteInto } from './termBus'
@@ -19,6 +20,93 @@ const history = new Map<string, string[]>()
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
 const baseName = (p: string) => p.split(/[\\/]/).pop() ?? p
+
+/** "Screenshot 23:41" for pasted images (their file names are generated), else the file name. */
+function imageLabel(path: string): string {
+  const m = baseName(path).match(/^paste-(\d{4}-\d{2}-\d{2})T(\d{2})-(\d{2})-(\d{2})-(\d{3})Z\./)
+  if (!m) return baseName(path)
+  const d = new Date(`${m[1]}T${m[2]}:${m[3]}:${m[4]}.${m[5]}Z`)
+  return `Screenshot ${d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })}`
+}
+
+const HELP: Array<[string, string]> = [
+  ['Enter', 'Send to Claude'],
+  ['Shift+Enter', 'New line'],
+  ['↑ / ↓', 'Previous messages (in an empty box)'],
+  ['Ctrl+V', 'Paste text, or a screenshot as an image'],
+  ['Drag & drop', 'Attach image files'],
+  ['🖼 button', 'Pick images from disk'],
+  ['Thumbnail', 'Click to open, × to remove'],
+  ['Ctrl+Space', 'Voice dictation (if turned on in Settings)'],
+  ['Esc', 'Go to the terminal'],
+  ['Terminal', "Answer Claude's questions and menus there. The box waits until you do."]
+]
+
+/** ⓘ next to the box: what it can do. */
+function ComposerHelp() {
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <Button variant="ghost" size="icon" aria-label="What this box can do">
+          <InfoIcon />
+        </Button>
+      </TooltipTrigger>
+      <TooltipContent side="top" align="end" className="max-w-sm p-3">
+        <div className="flex flex-col gap-2">
+          <p className="font-semibold">Message box</p>
+          <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1">
+            {HELP.map(([k, v]) => (
+              <div key={k} className="contents">
+                <dt className="font-medium whitespace-nowrap">{k}</dt>
+                <dd className="opacity-80">{v}</dd>
+              </div>
+            ))}
+          </dl>
+        </div>
+      </TooltipContent>
+    </Tooltip>
+  )
+}
+
+const thumbs = new Map<string, string | null>()
+
+/** Attached image: a real preview, readable label, click to open, × to remove. */
+function ImageChip({ path, onRemove }: { path: string; onRemove: () => void }) {
+  const [src, setSrc] = useState<string | null | undefined>(thumbs.get(path))
+  useEffect(() => {
+    if (thumbs.has(path)) return
+    let alive = true
+    void window.api.imageThumbnail(path).then((url) => {
+      thumbs.set(path, url)
+      if (alive) setSrc(url)
+    })
+    return () => {
+      alive = false
+    }
+  }, [path])
+  return (
+    <div className="group relative flex w-32 flex-col gap-1" title={`${path}\nClick to open`}>
+      <button
+        className="flex h-20 w-32 items-center justify-center overflow-hidden border bg-background hover:border-ring"
+        onClick={() => void window.api.openImage(path)}
+      >
+        {src ? (
+          <img src={src} alt="" className="size-full object-cover" draggable={false} />
+        ) : (
+          <ImageIcon className="size-5 text-muted-foreground" />
+        )}
+      </button>
+      <span className="truncate text-[10px] text-muted-foreground">{imageLabel(path)}</span>
+      <button
+        className="absolute -top-1.5 -right-1.5 flex size-4 items-center justify-center border bg-background text-muted-foreground opacity-0 group-hover:opacity-100 hover:text-foreground"
+        title="Remove"
+        onClick={onRemove}
+      >
+        <XIcon className="size-3" />
+      </button>
+    </div>
+  )
+}
 
 export function Composer(props: { tabId: string; activity?: Activity }) {
   const { tabId } = props
@@ -122,15 +210,9 @@ export function Composer(props: { tabId: string; activity?: Activity }) {
         </p>
       )}
       {images.length > 0 && (
-        <div className="mb-1.5 flex flex-wrap gap-1">
+        <div className="mb-2 flex flex-wrap gap-2 pt-1.5 pr-1.5">
           {images.map((p) => (
-            <span key={p} className="flex items-center gap-1 border bg-background px-1.5 py-0.5 text-[11px]" title={p}>
-              <ImageIcon className="size-3" />
-              <span className="max-w-48 truncate">{baseName(p)}</span>
-              <button className="text-muted-foreground hover:text-foreground" onClick={() => setImages((c) => c.filter((x) => x !== p))}>
-                <XIcon className="size-3" />
-              </button>
-            </span>
+            <ImageChip key={p} path={p} onRemove={() => setImages((c) => c.filter((x) => x !== p))} />
           ))}
         </div>
       )}
@@ -146,9 +228,11 @@ export function Composer(props: { tabId: string; activity?: Activity }) {
           onPaste={(e) => void onPaste(e)}
           rows={1}
           spellCheck
-          placeholder="Message Claude… Enter to send, Shift+Enter for a new line, Ctrl+V to paste a screenshot"
+          aria-label="Message Claude"
+          data-composer
           className={cn('max-h-48 min-h-9 resize-none overflow-y-auto bg-background text-sm', waiting && 'opacity-70')}
         />
+        <ComposerHelp />
         <Button
           variant="ghost"
           size="icon"

@@ -212,6 +212,10 @@ export interface Api {
   dictate(id: string): void
   /** If the clipboard holds an image, saves it as a PNG file and returns its path; else null. */
   saveClipboardImage(): Promise<string | null>
+  /** Small preview (data URL) of an image file, or null. */
+  imageThumbnail(path: string): Promise<string | null>
+  /** Opens an image in the default viewer. */
+  openImage(path: string): Promise<void>
   /** File picker for images; returns chosen paths (empty if cancelled). */
   pickImages(): Promise<string[]>
   /** Real path of a dropped file. */

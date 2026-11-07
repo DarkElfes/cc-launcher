@@ -105,6 +105,11 @@ _Last updated: 2026-11-07_
   - `pnpm release` now creates a **draft**, uploads each file with 3 retries, then publishes. v0.7.0's
     installer upload had broken and left a draft; it was fixed by hand.
 
+- **0.8.1 (local build, not released)**: attached images in the message box show a real **thumbnail**
+  (main makes a ≤240px data URL with `nativeImage`; click opens the file, × removes it). Pasted screenshots are
+  labelled "Screenshot <time>" instead of the generated file name. The placeholder is gone; an **ⓘ** tooltip
+  next to the box lists everything it can do.
+
 ## In progress
 - Nothing.
 

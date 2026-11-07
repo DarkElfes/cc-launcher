@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto'
 import { existsSync, mkdirSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { basename, join } from 'node:path'
-import { app, BrowserWindow, clipboard, dialog, ipcMain, Notification, shell } from 'electron'
+import { app, BrowserWindow, clipboard, dialog, ipcMain, nativeImage, Notification, shell } from 'electron'
 import type { AppState, GitInfo, HistorySession, McpServer, ProjectInfo, Result, Settings, SpawnRequest } from '../shared/types'
 import {
   createProfile,
@@ -349,6 +349,22 @@ function registerIpc(): void {
       // unreadable clipboard: treat as no image
     }
     return null
+  })
+  // Small preview of an attached image for the message box (data URL; the page can't load file://).
+  ipcMain.handle('image:thumbnail', (_e, path: string): string | null => {
+    try {
+      if (!/\.(png|jpe?g|gif|webp|bmp)$/i.test(path) || !existsSync(path)) return null
+      const img = nativeImage.createFromPath(path)
+      if (img.isEmpty()) return null
+      const { width, height } = img.getSize()
+      const scale = Math.min(1, 240 / Math.max(width, height))
+      return img.resize({ width: Math.round(width * scale), height: Math.round(height * scale), quality: 'good' }).toDataURL()
+    } catch {
+      return null
+    }
+  })
+  ipcMain.handle('image:open', async (_e, path: string) => {
+    if (/\.(png|jpe?g|gif|webp|bmp)$/i.test(path) && existsSync(path)) await shell.openPath(path)
   })
   ipcMain.handle('dialog:pickImages', async () => {
     const res = await dialog.showOpenDialog(win!, {
