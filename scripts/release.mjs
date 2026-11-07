@@ -23,7 +23,14 @@ try {
 }
 
 run('pnpm', ['exec', 'electron-vite', 'build'])
-run('pnpm', ['exec', 'electron-builder', '--win', '--publish', 'never'])
+// makensis sometimes fails once on Windows ("Error - aborting creation process"), likely a file briefly
+// locked by antivirus. One retry has always been enough.
+try {
+  run('pnpm', ['exec', 'electron-builder', '--win', '--publish', 'never'])
+} catch {
+  console.warn('electron-builder failed; retrying once...')
+  run('pnpm', ['exec', 'electron-builder', '--win', '--publish', 'never'])
+}
 
 for (const f of files) if (!existsSync(f)) throw new Error(`Missing build output: ${f}`)
 const latest = readFileSync('dist/latest.yml', 'utf8')
