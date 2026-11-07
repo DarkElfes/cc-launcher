@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ClipboardEvent, type DragEvent, type KeyboardEvent } from 'react'
-import { ImageIcon, InfoIcon, PaperPlaneRightIcon, WarningCircleIcon, XIcon } from '@phosphor-icons/react'
+import { ImageIcon, InfoIcon, MicrophoneIcon, PaperPlaneRightIcon, WarningCircleIcon, XIcon } from '@phosphor-icons/react'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
@@ -37,7 +37,7 @@ const HELP: Array<[string, string]> = [
   ['Drag & drop', 'Attach image files'],
   ['🖼 button', 'Pick images from disk'],
   ['Thumbnail', 'Click to open, × to remove'],
-  ['Ctrl+Space', 'Voice dictation (if turned on in Settings)'],
+  ['🎤 / Ctrl+Space', "Voice dictation. Claude Code's own dictation types into Claude's prompt above, not into this box."],
   ['Esc', 'Go to the terminal'],
   ['Terminal', "Answer Claude's questions and menus there. The box waits until you do."]
 ]
@@ -108,7 +108,14 @@ function ImageChip({ path, onRemove }: { path: string; onRemove: () => void }) {
   )
 }
 
-export function Composer(props: { tabId: string; activity?: Activity }) {
+export function Composer(props: {
+  tabId: string
+  activity?: Activity
+  /** Claude Code voice dictation is on (tap mode). */
+  voiceOn: boolean
+  /** Starts/stops dictation (or explains how to turn it on). */
+  onDictate: () => void
+}) {
   const { tabId } = props
   const [text, setText] = useState(() => drafts.get(tabId)?.text ?? '')
   const [images, setImages] = useState<string[]>(() => drafts.get(tabId)?.images ?? [])
@@ -233,6 +240,19 @@ export function Composer(props: { tabId: string; activity?: Activity }) {
           className={cn('max-h-48 min-h-9 resize-none overflow-y-auto bg-background text-sm', waiting && 'opacity-70')}
         />
         <ComposerHelp />
+        <Button
+          variant="ghost"
+          size="icon"
+          className={cn(!props.voiceOn && 'text-muted-foreground')}
+          title={
+            props.voiceOn
+              ? "Voice (Ctrl+Space): talk, then click again. Claude Code's dictation types into Claude's own prompt and sends it."
+              : 'Voice dictation is off. Click to turn it on.'
+          }
+          onClick={props.onDictate}
+        >
+          <MicrophoneIcon />
+        </Button>
         <Button
           variant="ghost"
           size="icon"

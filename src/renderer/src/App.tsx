@@ -2,8 +2,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   FolderSimpleIcon,
   GearSixIcon,
-  ImageIcon,
-  MicrophoneIcon,
   PlusIcon,
   SidebarSimpleIcon,
   SquaresFourIcon,
@@ -40,7 +38,7 @@ import { SignalDot, signalOf, strongest } from './activity'
 import { CONTINUE_PROMPT, HANDOFF_PROMPT, HandoffDialog, type HandoffMode } from './handoff'
 import { Composer } from './composer'
 import { SessionPanel } from './panel'
-import { forget, imagePathsText, pasteInto } from './termBus'
+import { forget } from './termBus'
 import { TerminalPane } from './TerminalPane'
 import { AccountsView, Dashboard, ProjectView, SettingsView } from './views'
 import { ProfileTag, showError } from './ui'
@@ -636,37 +634,6 @@ function Shell() {
                       </div>
                     )
                   })}
-                  {activeTabObj && (
-                    <div className="ml-auto flex items-center gap-1 pr-2">
-                      <Button
-                        variant="ghost"
-                        size="xs"
-                        title="Attach images for Claude (you can also paste a screenshot with Ctrl+V or drag files onto the terminal)"
-                        onClick={async () => {
-                          const paths = await window.api.pickImages()
-                          if (paths.length) pasteInto(activeTabObj.id, imagePathsText(paths))
-                        }}
-                      >
-                        <ImageIcon data-icon="inline-start" />
-                        Image
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="xs"
-                        className={cn(!voiceTap && 'text-muted-foreground')}
-                        title={
-                          voiceTap
-                            ? 'Voice dictation: click (or Ctrl+Space) to start talking, again to send'
-                            : 'Voice dictation is off. Click to turn it on.'
-                        }
-                        onClick={() => dictate(activeTabObj)}
-                      >
-                        <MicrophoneIcon data-icon="inline-start" />
-                        {voiceTap ? 'Dictate' : 'Dictate (off)'}
-                        <kbd className="ml-1 text-[10px] text-muted-foreground">Ctrl+Space</kbd>
-                      </Button>
-                    </div>
-                  )}
                 </div>
               )}
               <div className="relative min-h-0 flex-1 bg-background">
@@ -686,7 +653,12 @@ function Shell() {
                 )}
               </div>
               {activeTabObj?.kind === 'project' && (
-                <Composer tabId={activeTabObj.id} activity={sessions[activeTabObj.id]?.activity} />
+                <Composer
+                  tabId={activeTabObj.id}
+                  activity={sessions[activeTabObj.id]?.activity}
+                  voiceOn={voiceTap}
+                  onDictate={() => dictate(activeTabObj)}
+                />
               )}
             </section>
           </div>
