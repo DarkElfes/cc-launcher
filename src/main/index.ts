@@ -17,7 +17,7 @@ import {
 import { Store } from './store'
 import { Terminals } from './terminals'
 import { Updater } from './updater'
-import { hasUpdateToken, setUpdateToken } from './updateToken'
+import { setUpdateToken, updateTokenSource } from './updateToken'
 
 /** Must match the title bar height in the renderer (h-10 = 40px). */
 const TITLEBAR_HEIGHT = 40
@@ -69,7 +69,7 @@ function getState(): AppState {
   return {
     appVersion: app.getVersion(),
     update: updater.status,
-    hasUpdateToken: hasUpdateToken(),
+    updateTokenSource: updateTokenSource(),
     projects: store.data.projects
       .map((p) => ({ ...p, exists: isDir(p.path) }))
       .sort((a, b) => (b.lastOpenedAt ?? b.addedAt) - (a.lastOpenedAt ?? a.addedAt)),

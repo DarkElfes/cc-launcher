@@ -400,20 +400,27 @@ function UpdatesSection({ state, onSaved }: { state: AppState; onSaved: () => vo
             spellCheck={false}
             value={token}
             onChange={(e) => setToken(e.target.value)}
-            placeholder={state.hasUpdateToken ? '•••••••• saved' : 'github_pat_…'}
+            placeholder={
+              state.updateTokenSource === 'saved'
+                ? '•••••••• saved'
+                : state.updateTokenSource === 'built-in'
+                  ? 'using the built-in token (paste one here to override)'
+                  : 'github_pat_…'
+            }
           />
           <Button type="submit" disabled={!token.trim()}>
             Save
           </Button>
-          {state.hasUpdateToken && (
+          {state.updateTokenSource === 'saved' && (
             <Button type="button" variant="destructive" onClick={() => void saveToken('')}>
               Remove
             </Button>
           )}
         </form>
         <FieldDescription>
-          Fine-grained token with read-only <b>Contents</b> access to the cc-launcher repo only. It's stored
-          encrypted for your Windows user and used only to download updates.
+          {state.updateTokenSource === 'built-in'
+            ? 'This version has an update token built in, so nothing to do here. Only paste a new one if updates start failing (for example, the built-in token expired).'
+            : 'Fine-grained token with read-only Contents access to the cc-launcher repo only. Stored encrypted for your Windows user and used only to download updates.'}
         </FieldDescription>
       </Field>
     </FieldGroup>

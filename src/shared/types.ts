@@ -58,8 +58,8 @@ export interface UpdateStatus {
 export interface AppState {
   appVersion: string
   update: UpdateStatus
-  /** Whether a GitHub update token is saved. The token itself never leaves the main process. */
-  hasUpdateToken: boolean
+  /** Where the GitHub update token comes from. The token itself never leaves the main process. */
+  updateTokenSource: 'saved' | 'built-in' | 'none'
   projects: ProjectInfo[]
   profiles: ProfileInfo[]
   settings: Settings
