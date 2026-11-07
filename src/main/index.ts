@@ -7,7 +7,7 @@ import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron'
 import type { AppState, ProjectInfo, Result, Settings, SpawnRequest } from '../shared/types'
 import {
   createProfile,
-  DEFAULT_PROFILE,
+  ensureAllStatusLines,
   listProfiles,
   profileDir,
   profileEnv,
@@ -18,6 +18,9 @@ import { Store } from './store'
 import { Terminals } from './terminals'
 import { Updater } from './updater'
 import { hasUpdateToken, setUpdateToken } from './updateToken'
+
+/** Must match the title bar height in the renderer (h-10 = 40px). */
+const TITLEBAR_HEIGHT = 40
 
 let win: BrowserWindow | null = null
 let store: Store
@@ -117,7 +120,6 @@ function registerIpc(): void {
   })
 
   ipcMain.handle('profile:remove', async (_e, name: string): Promise<Result<boolean>> => {
-    if (name === DEFAULT_PROFILE) return { ok: false, error: 'The default profile cannot be removed.' }
     if (validateProfileName(name)) return { ok: false, error: 'Invalid profile name.' }
     const dir = profileDir(name)
     const answer = await dialog.showMessageBox(win!, {
@@ -180,8 +182,8 @@ function registerIpc(): void {
       cwd = project.path
     } else {
       cwd = profileDir(req.profile)
-      createProfile(req.profile)
     }
+    createProfile(req.profile) // also (re)installs the usage status line
 
     try {
       const id = terminals.spawn({ file: claude, args: [], cwd, env: profileEnv(req.profile), cols: req.cols, rows: req.rows })
@@ -229,8 +231,12 @@ function createWindow(): void {
     minWidth: 900,
     minHeight: 560,
     title: 'cc-launcher',
-    backgroundColor: '#15161a',
+    icon: join(app.getAppPath(), 'resources', 'icon.png'),
+    backgroundColor: '#0a0a0a',
     autoHideMenuBar: true,
+    // Custom title bar: no native caption; Windows draws only the min/max/close buttons on top.
+    titleBarStyle: 'hidden',
+    titleBarOverlay: { color: '#0a0a0a', symbolColor: '#a3a3a3', height: TITLEBAR_HEIGHT },
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
       contextIsolation: true,
@@ -269,6 +275,7 @@ if (!app.requestSingleInstanceLock()) {
 
   void app.whenReady().then(() => {
     store = new Store(join(app.getPath('userData'), 'app.json'))
+    ensureAllStatusLines()
     registerIpc()
     createWindow()
     updater.start()

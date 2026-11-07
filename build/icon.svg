@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <!-- cc-launcher: a terminal prompt in front of three stacked account layers. Sharp corners to match the Lyra UI. -->
+  <rect width="512" height="512" fill="#0a0a0a"/>
+  <rect x="16" y="16" width="480" height="480" fill="none" stroke="#2a2a2a" stroke-width="8"/>
+  <!-- account layers -->
+  <rect x="300" y="112" width="136" height="56" fill="#60a5fa"/>
+  <rect x="300" y="196" width="136" height="56" fill="#c084fc"/>
+  <rect x="300" y="280" width="136" height="56" fill="#4ade80"/>
+  <!-- prompt chevron -->
+  <path d="M84 132 L212 224 L84 316" fill="none" stroke="#fafafa" stroke-width="44" stroke-linecap="square" stroke-linejoin="miter"/>
+  <!-- cursor -->
+  <rect x="84" y="372" width="352" height="40" fill="#fafafa"/>
+</svg>

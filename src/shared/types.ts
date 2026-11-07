@@ -17,12 +17,27 @@ export interface ProjectInfo extends Project {
 
 export interface ProfileInfo {
   name: string
-  /** Config folder passed as CLAUDE_CONFIG_DIR (or ~/.claude for "default"). */
+  /** Config folder passed as CLAUDE_CONFIG_DIR: ~/.claude-profiles/<name>. */
   dir: string
   /** True when a credentials file exists in the folder. Its contents are never read. */
   signedIn: boolean
-  /** The built-in profile that uses the normal ~/.claude folder. */
-  isDefault: boolean
+  /** Last plan usage reported by Claude Code's status line for this account, if any. */
+  usage?: ProfileUsage
+}
+
+export interface UsageWindow {
+  /** 0–100. 0 with stale=true means the window has reset since the last report. */
+  usedPercent: number
+  /** Epoch ms when the window resets, or null when it already reset. */
+  resetsAt: number | null
+  stale: boolean
+}
+
+export interface ProfileUsage {
+  /** Epoch ms of the last report from a running Claude Code session. */
+  updatedAt: number
+  fiveHour?: UsageWindow
+  week?: UsageWindow
 }
 
 export interface Settings {

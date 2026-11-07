@@ -6,11 +6,13 @@ directories:
   buildResources: build
 files:
   - out/**
+  - resources/**
   - package.json
 # node-pty ships native binaries that can't be loaded from inside the asar archive.
 asarUnpack:
   - '**/node_modules/@lydell/**'
 win:
+  icon: build/icon.png # generated from build/icon.svg by `pnpm icon`
   target:
     - target: nsis
       arch: [x64]

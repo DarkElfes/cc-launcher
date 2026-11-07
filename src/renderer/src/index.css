@@ -135,6 +135,22 @@
   }
 }
 
+/* Custom title bar: drag the window from these areas; interactive children opt out. */
+.app-drag {
+  -webkit-app-region: drag;
+  user-select: none;
+}
+.app-drag button,
+.app-drag a,
+.app-drag input,
+.app-no-drag {
+  -webkit-app-region: no-drag;
+}
+/* Keep title bar content clear of the native min/max/close buttons on the right. */
+.titlebar-safe {
+  padding-right: calc(100vw - env(titlebar-area-x, 0px) - env(titlebar-area-width, 100vw) + 8px);
+}
+
 /* xterm.js host: fills the terminal area; the terminal itself is sized by the fit addon. */
 .terminal-host {
   position: absolute;

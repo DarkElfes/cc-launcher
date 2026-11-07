@@ -18,7 +18,7 @@ import { Input } from '@/components/ui/input'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { cn } from '@/lib/utils'
 import type { AppState, ProfileInfo, ProjectInfo, Result } from '../../shared/types'
-import { ProfileTag, showError, SignedIn, timeAgo } from './ui'
+import { ProfileTag, showError, SignedIn, timeAgo, UsageInline, UsageMeter } from './ui'
 
 async function run<T>(p: Promise<Result<T>>): Promise<T | undefined> {
   const r = await p
@@ -35,7 +35,7 @@ function PageHeader(props: { title: string; description?: ReactNode; actions?: R
       <div className="min-w-0">
         <h1 className="text-lg font-semibold tracking-tight">{props.title}</h1>
         {props.description && (
-          <p className={cn('mt-1 truncate text-xs text-muted-foreground')}>{props.description}</p>
+          <p className={cn('mt-1 text-xs text-muted-foreground', props.mono && 'truncate')}>{props.description}</p>
         )}
       </div>
       {props.actions && <div className="flex shrink-0 gap-2">{props.actions}</div>}
@@ -126,6 +126,7 @@ export function ProjectView(props: {
       <PageHeader
         title={project.name}
         description={project.path}
+        mono
         actions={
           <>
             <Button variant="outline" size="sm" onClick={() => run(window.api.openFolder(project.path))}>
@@ -147,7 +148,9 @@ export function ProjectView(props: {
         <p className="text-xs text-destructive">The folder no longer exists. Remove the project or restore the folder.</p>
       ) : (
         <div className="flex flex-wrap items-center gap-2">
-          <span className="text-xs text-muted-foreground">Open Claude Code with</span>
+          <span className="text-xs text-muted-foreground">
+            {profiles.length ? 'Open Claude Code with' : 'No accounts yet. Add one under Accounts first.'}
+          </span>
           {profiles.map((p) => (
             <Button
               key={p.name}
@@ -159,6 +162,7 @@ export function ProjectView(props: {
             >
               <PlayIcon data-icon="inline-start" />
               <ProfileTag name={p.name} />
+              <UsageInline usage={p.usage} />
               {!p.signedIn && (
                 <Badge variant="outline" className="border-amber-500/40 text-amber-400">
                   login
@@ -186,27 +190,41 @@ export function AccountsView(props: { profiles: ProfileInfo[]; onChanged: () => 
     <div className="flex max-h-[55%] shrink-0 flex-col gap-4 overflow-y-auto p-6 pb-4">
       <PageHeader
         title="Accounts"
-        description="One profile per Claude account, each with its own config folder, login and session history. This app only checks whether a login exists."
+        description="One profile per Claude account, each in its own folder under ~/.claude-profiles. The normal ~/.claude folder isn't used, so `claude` in other terminals can never switch an account here."
       />
+      {props.profiles.length === 0 && (
+        <p className="text-xs text-amber-400">No accounts yet. Add one below, then click Sign in.</p>
+      )}
       <div className="border">
         <Table>
           <TableHeader>
             <TableRow>
               <TableHead>Profile</TableHead>
-              <TableHead>Folder</TableHead>
               <TableHead>Status</TableHead>
+              <TableHead>5-hour limit</TableHead>
+              <TableHead>Weekly limit</TableHead>
               <TableHead className="text-right">Actions</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {props.profiles.map((p) => (
               <TableRow key={p.name}>
-                <TableCell>
+                <TableCell title={p.dir}>
                   <ProfileTag name={p.name} />
                 </TableCell>
-                <TableCell className="text-muted-foreground">{p.dir}</TableCell>
                 <TableCell>
-                  <SignedIn profile={p} />
+                  <div className="flex flex-col items-start gap-1">
+                    <SignedIn profile={p} />
+                    <span className="text-[10px] text-muted-foreground">
+                      {p.usage ? `usage seen ${timeAgo(p.usage.updatedAt)}` : 'no usage data yet'}
+                    </span>
+                  </div>
+                </TableCell>
+                <TableCell>
+                  <UsageMeter label="5h" w={p.usage?.fiveHour} />
+                </TableCell>
+                <TableCell>
+                  <UsageMeter label="week" w={p.usage?.week} />
                 </TableCell>
                 <TableCell>
                   <div className="flex justify-end gap-2">
@@ -218,19 +236,17 @@ export function AccountsView(props: { profiles: ProfileInfo[]; onChanged: () => 
                       <FolderOpenIcon data-icon="inline-start" />
                       Folder
                     </Button>
-                    {!p.isDefault && (
-                      <Button
-                        variant="destructive"
-                        size="xs"
-                        onClick={async () => {
-                          await run(window.api.removeProfile(p.name))
-                          props.onChanged()
-                        }}
-                      >
-                        <TrashIcon data-icon="inline-start" />
-                        Remove
-                      </Button>
-                    )}
+                    <Button
+                      variant="destructive"
+                      size="xs"
+                      onClick={async () => {
+                        await run(window.api.removeProfile(p.name))
+                        props.onChanged()
+                      }}
+                    >
+                      <TrashIcon data-icon="inline-start" />
+                      Remove
+                    </Button>
                   </div>
                 </TableCell>
               </TableRow>
@@ -253,6 +269,11 @@ export function AccountsView(props: { profiles: ProfileInfo[]; onChanged: () => 
       </form>
       <p className="text-xs text-muted-foreground">
         To sign in, click <b>Sign in</b>. Claude Code opens below; follow its login steps (type <code>/login</code> if it doesn't ask).
+      </p>
+      <p className="text-xs text-muted-foreground">
+        Usage comes from Claude Code's status line (Pro/Max plans). It updates while a session of that account
+        is running, after its first reply. The app adds a small status-line script to each profile for this,
+        unless you've set your own.
       </p>
     </div>
   )

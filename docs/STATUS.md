@@ -29,6 +29,18 @@ _Last updated: 2026-11-07_
   and passes it straight to electron-updater (not via env vars). Checked in the packaged app:
   "needs token" state and token format validation. See `docs/RELEASING.md`.
 
+- **v0.2.0** (branch `feat/titlebar-accounts-usage`)
+  - Custom title bar: frameless window (`titleBarStyle: hidden` + native min/max/close overlay),
+    full-height sidebar with the app icon, breadcrumb bar on the main side.
+  - App icon: `build/icon.svg` → `pnpm icon` → `build/icon.png` (installer/exe) + `resources/icon.png` (window).
+  - Accounts: the `default` (~/.claude) profile is gone. Every account is its own folder in
+    ~/.claude-profiles, so `claude` used elsewhere can't change which account a profile is.
+  - Plan usage (5-hour + weekly) per account, from Claude Code's documented status-line
+    `rate_limits` data. The app installs `cc-launcher-statusline.ps1` into each profile and sets
+    `statusLine` in its settings.json, unless one is already set. Shown as meters on Accounts and as
+    "5h x% · wk y%" on the launch buttons. Refreshed every 20 s. Tested the script under PowerShell and
+    Git Bash with sample data.
+
 ## In progress
 - Nothing.
 
@@ -42,6 +54,8 @@ _Last updated: 2026-11-07_
 ## Known problems
 - No code-signing certificate, so Windows SmartScreen warns on first install ("More info → Run anyway").
   Auto-update still works without signing.
-- Default Electron icon. Add `build/icon.ico` (256×256) to fix.
+- Usage only updates while a session of that account runs (after its first reply). It can't be
+  fetched on demand without using the login token, which we don't do. Not yet seen with a real account.
+- Usage needs workspace trust to be accepted in the folder (the status line is blank before that).
 - If the app is killed (not closed), running `claude` children may be left behind. A normal close kills them.
 - Not yet tested by hand: real sign-in flow, Ctrl+V paste, images pasted into Claude.

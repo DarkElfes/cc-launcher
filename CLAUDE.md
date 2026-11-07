@@ -34,6 +34,8 @@ src/
     profiles.ts        profile folders (~/.claude-profiles/<name>, "default" = ~/.claude), env for claude
     terminals.ts       node-pty processes keyed by id
     updater.ts         electron-updater wrapper (only active in installed builds with a publish target)
+    updateToken.ts     encrypted (safeStorage) read-only GitHub token for updates
+    usage.ts           per-profile status-line script that records rate_limits (5h/weekly usage)
   preload/index.ts     contextBridge → window.api (the only renderer↔main surface)
   renderer/            React UI
     src/App.tsx        shell (shadcn Sidebar), view routing, terminal tabs, update toast
@@ -57,7 +59,11 @@ so it needs no native rebuild), electron-builder, and electron-updater.
   to the renderer. Channel names look like `area:action`.
 - Every new IPC call goes into `Api` in `shared/types.ts` first, then into the preload and the main process.
 - The renderer is sandboxed (`contextIsolation`, `sandbox`, no node). Keep Node APIs in `main/`.
-- Profile names: `^[a-z0-9][a-z0-9_-]{0,31}$`. `default` is reserved.
+- Profile names: `^[a-z0-9][a-z0-9_-]{0,31}$`. Profiles live only in `~/.claude-profiles/<name>`.
+  Never use the shared `~/.claude` folder as a profile.
+- Window: frameless with a native controls overlay. Title bar areas use `.app-drag`, and right-side
+  content uses `.titlebar-safe`. Keep `TITLEBAR_HEIGHT` (main) equal to the title bar's `h-10`.
+- Icon: edit `build/icon.svg`, then `pnpm icon`.
 - UI: build from shadcn components and Tailwind classes. Don't write custom CSS files. Use theme
   tokens (`bg-background`, `text-muted-foreground`, …), not hard-coded colors. Profile colors from
   `profileColor()` are the one exception. Errors go to `showError()` (a toast). Confirmations use `useConfirm()`.

@@ -24,6 +24,7 @@ import { TooltipProvider } from '@/components/ui/tooltip'
 import { cn } from '@/lib/utils'
 import { ConfirmProvider, useConfirm } from '@/components/confirm'
 import type { AppState, ProjectInfo, SpawnRequest } from '../../shared/types'
+import iconUrl from '../../../build/icon.svg'
 import { forget } from './termBus'
 import { TerminalPane } from './TerminalPane'
 import { AccountsView, Dashboard, ProjectView, SettingsView } from './views'
@@ -41,6 +42,24 @@ export interface Tab {
 
 /** Key for the group of tabs shown in a view: a project id, or "accounts" for sign-in tabs. */
 const groupOf = (t: Tab) => (t.kind === 'login' ? 'accounts' : t.projectId!)
+
+/** Draggable top bar of the main area. Windows draws min/max/close over its right end. */
+function TitleBar({ view, project }: { view: View; project?: ProjectInfo }) {
+  const crumbs =
+    view.kind === 'project'
+      ? ['Projects', project?.name ?? '']
+      : [{ dashboard: 'Dashboard', accounts: 'Accounts', settings: 'Settings' }[view.kind]]
+  return (
+    <header className="app-drag titlebar-safe flex h-10 shrink-0 items-center gap-2 border-b pl-4 text-xs">
+      {crumbs.map((c, i) => (
+        <span key={i} className={cn('truncate', i < crumbs.length - 1 ? 'text-muted-foreground' : 'font-medium')}>
+          {i > 0 && <span className="mr-2 text-muted-foreground">/</span>}
+          {c}
+        </span>
+      ))}
+    </header>
+  )
+}
 
 export function App() {
   return (
@@ -66,6 +85,8 @@ function Shell() {
     void refresh()
     const onFocus = () => void refresh()
     window.addEventListener('focus', onFocus)
+    // Usage numbers are written by running Claude Code sessions; pick them up regularly.
+    const poll = setInterval(() => document.visibilityState === 'visible' && void refresh(), 20_000)
     const off = window.api.onTermExit(({ id, exitCode }) => {
       setTabs((ts) => ts.map((t) => (t.id === id ? { ...t, exitCode } : t)))
       void refresh() // sign-in state may have changed
@@ -83,6 +104,7 @@ function Shell() {
     })
     return () => {
       window.removeEventListener('focus', onFocus)
+      clearInterval(poll)
       off()
       offUpdate()
     }
@@ -172,8 +194,8 @@ function Shell() {
   return (
     <SidebarProvider className="h-full min-h-0">
       <Sidebar collapsible="none" className="h-full border-r">
-        <SidebarHeader className="px-4 py-3">
-          <span className="text-sm font-semibold tracking-tight">cc-launcher</span>
+        <SidebarHeader className="app-drag h-10 shrink-0 flex-row items-center px-4 py-0">
+          <img src={iconUrl} alt="" className="size-5" draggable={false} />
         </SidebarHeader>
         <SidebarContent>
           <SidebarGroup>
@@ -234,6 +256,7 @@ function Shell() {
       </Sidebar>
 
       <SidebarInset className="flex min-h-0 min-w-0 flex-col overflow-hidden">
+        <TitleBar view={view} project={project} />
         {!state.claudePath && (
           <Alert variant="destructive" className="m-4 mb-0 w-auto">
             <WarningIcon />
