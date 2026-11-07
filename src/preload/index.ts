@@ -1,5 +1,14 @@
 import { contextBridge, ipcRenderer, webUtils, type IpcRendererEvent } from 'electron'
-import type { Api, SessionInfo, TermDataEvent, TermExitEvent, UpdateStatus } from '../shared/types'
+import type {
+  Api,
+  ChatEventMsg,
+  ChatExitMsg,
+  ChatPermissionRequest,
+  SessionInfo,
+  TermDataEvent,
+  TermExitEvent,
+  UpdateStatus
+} from '../shared/types'
 
 function listen<T>(channel: string, cb: (payload: T) => void): () => void {
   const handler = (_e: IpcRendererEvent, payload: T) => cb(payload)
@@ -28,6 +37,16 @@ const api: Api = {
   killTerminal: (id) => ipcRenderer.send('term:kill', id),
   onTermData: (cb) => listen<TermDataEvent>('term:data', cb),
   onTermExit: (cb) => listen<TermExitEvent>('term:exit', cb),
+  chatStart: (req) => ipcRenderer.invoke('chat:start', req),
+  chatSend: (tabId, text, images) => ipcRenderer.invoke('chat:send', tabId, text, images),
+  chatStop: (tabId) => ipcRenderer.send('chat:stop', tabId),
+  chatClose: (tabId) => ipcRenderer.send('chat:close', tabId),
+  chatSetPermissionMode: (tabId, mode) => ipcRenderer.send('chat:setMode', tabId, mode),
+  chatPermissionReply: (tabId, requestId, decision) => ipcRenderer.send('chat:permissionReply', tabId, requestId, decision),
+  onChatEvent: (cb) => listen<ChatEventMsg>('chat:event', cb),
+  onChatExit: (cb) => listen<ChatExitMsg>('chat:exit', cb),
+  onChatPermission: (cb) => listen<ChatPermissionRequest>('chat:permission', cb),
+  onChatPermissionDone: (cb) => listen<{ tabId: string; requestId: string; decision: string }>('chat:permission-done', cb),
   getSessions: () => ipcRenderer.invoke('sessions:get'),
   onSessionUpdate: (cb) => listen<SessionInfo>('session:update', cb),
   notify: (n) => ipcRenderer.send('notify', n),

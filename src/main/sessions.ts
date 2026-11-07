@@ -56,6 +56,8 @@ export class SessionTracker {
   close(tabId: string): void {
     this.tabs.delete(tabId)
     this.profileOf.delete(tabId)
+    this.chatCostBase.delete(tabId)
+    this.chatCostRun.delete(tabId)
   }
 
   private update(tabId: string, fn: (s: SessionInfo) => void): void {
@@ -133,6 +135,10 @@ export class SessionTracker {
           }
           break
         }
+        case 'PermissionRequest':
+          s.message = `Wants to use ${str(e.tool_name) ?? 'a tool'}`
+          this.setActivity(s, 'needs-you')
+          break
         case 'Notification': {
           const type = str(e.notification_type) ?? ''
           if (WAITING_NOTIFICATIONS.has(type)) {
@@ -203,6 +209,56 @@ export class SessionTracker {
     }
   }
 
+  private chatCostBase = new Map<string, number>()
+  private chatCostRun = new Map<string, number>()
+
+  /**
+   * Chat tabs have no status line (print mode), so model / context / cost come from the stream-json
+   * events themselves: assistant `usage` (current context) and `result` (cost estimate, context window).
+   */
+  chatEvent(tabId: string, e: Record<string, unknown>): void {
+    if (!this.tabs.has(tabId)) return
+    if (e.type === 'system' && e.subtype === 'init') {
+      const model = str(e.model)
+      if (model) this.update(tabId, (s) => (s.model ??= prettyModel(model)))
+    } else if (e.type === 'assistant' && !e.parent_tool_use_id) {
+      const u = obj(obj(e.message).usage)
+      const n = (k: string) => (typeof u[k] === 'number' ? (u[k] as number) : 0)
+      const tokens = n('input_tokens') + n('cache_read_input_tokens') + n('cache_creation_input_tokens')
+      if (tokens > 0)
+        this.update(tabId, (s) => {
+          const size = s.context?.size ?? 200_000
+          s.context = { usedPercent: Math.round((tokens / size) * 100), tokens, size }
+        })
+    } else if (e.type === 'result') {
+      const run = typeof e.total_cost_usd === 'number' ? e.total_cost_usd : 0
+      this.chatCostRun.set(tabId, run)
+      const window = Object.values(obj(e.modelUsage)).map((m) => obj(m).contextWindow).find((w) => typeof w === 'number') as number | undefined
+      this.update(tabId, (s) => {
+        s.costUsd = (this.chatCostBase.get(tabId) ?? 0) + run
+        s.durationMs = (s.durationMs ?? 0) + (typeof e.duration_ms === 'number' ? e.duration_ms : 0)
+        if (window && s.context) s.context = { ...s.context, size: window, usedPercent: Math.round((s.context.tokens / window) * 100) }
+      })
+    }
+  }
+
+  /** A chat process ended: its cost total becomes the base for the next (resumed) process. */
+  chatProcessEnded(tabId: string): void {
+    this.chatCostBase.set(tabId, (this.chatCostBase.get(tabId) ?? 0) + (this.chatCostRun.get(tabId) ?? 0))
+    this.chatCostRun.delete(tabId)
+    this.update(tabId, (s) => {
+      if (s.activity === 'working' || s.activity === 'needs-you') this.setActivity(s, 'idle')
+    })
+  }
+
+  /** A message was sent in a chat tab. */
+  chatWorking(tabId: string): void {
+    this.update(tabId, (s) => {
+      s.error = undefined
+      this.setActivity(s, 'working')
+    })
+  }
+
   /** Reads the status line's per-session files (model, context, cost) for open tabs. */
   private pollStatus(): void {
     for (const [tabId, s] of this.tabs) {
@@ -250,6 +306,12 @@ export class SessionTracker {
       }
     }
   }
+}
+
+/** "claude-opus-5-5" → "Opus 5.5" */
+function prettyModel(id: string): string {
+  const m = id.match(/claude-([a-z]+)-(\d+)-(\d+)/)
+  return m ? `${m[1][0].toUpperCase()}${m[1].slice(1)} ${m[2]}.${m[3]}` : id
 }
 
 /** Deletes status-line session files older than a week. */

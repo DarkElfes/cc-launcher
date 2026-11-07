@@ -80,6 +80,40 @@ export interface SessionInfo {
   outputs: SessionOutput[]
 }
 
+/** A tool call waiting for your approval in a chat tab (from the PermissionRequest hook). */
+export interface ChatPermissionRequest {
+  tabId: string
+  requestId: string
+  toolName: string
+  input: Record<string, unknown>
+  /** Claude Code's suggested permission updates (e.g. "always allow this command"). */
+  suggestions: unknown[]
+}
+
+export type ChatPermissionDecision =
+  | { behavior: 'allow'; updatedInput?: Record<string, unknown>; updatedPermissions?: unknown[] }
+  | { behavior: 'deny'; message?: string; interrupt?: boolean }
+
+export interface ChatStartRequest {
+  projectId: string
+  profile: string
+  resumeSessionId?: string
+  resumePath?: string
+  permissionMode?: string
+}
+
+export interface ChatEventMsg {
+  tabId: string
+  event: Record<string, unknown>
+}
+
+export interface ChatExitMsg {
+  tabId: string
+  code: number | null
+  stopped?: boolean
+  stderr?: string
+}
+
 export interface HistorySession {
   id: string
   profile: string
@@ -148,6 +182,8 @@ export interface Settings {
   claudeLanguage?: string
   /** Voice dictation for all profiles. Unset = leave as is. */
   voiceMode?: 'tap' | 'hold' | 'off'
+  /** How new Claude tabs open: the app's chat view (default) or the Claude Code terminal. */
+  tabMode?: 'chat' | 'terminal'
 }
 
 export interface UpdateStatus {
@@ -224,6 +260,17 @@ export interface Api {
   killTerminal(id: string): void
   onTermData(cb: (e: TermDataEvent) => void): () => void
   onTermExit(cb: (e: TermExitEvent) => void): () => void
+  // ---- Chat mode (claude -p stream-json) ----
+  chatStart(req: ChatStartRequest): Promise<Result<{ tabId: string; history: Array<Record<string, unknown>> }>>
+  chatSend(tabId: string, text: string, imagePaths: string[]): Promise<Result>
+  chatStop(tabId: string): void
+  chatClose(tabId: string): void
+  chatSetPermissionMode(tabId: string, mode: string | undefined): void
+  chatPermissionReply(tabId: string, requestId: string, decision: ChatPermissionDecision): void
+  onChatEvent(cb: (m: ChatEventMsg) => void): () => void
+  onChatExit(cb: (m: ChatExitMsg) => void): () => void
+  onChatPermission(cb: (r: ChatPermissionRequest) => void): () => void
+  onChatPermissionDone(cb: (m: { tabId: string; requestId: string; decision: string }) => void): () => void
   /** Live session info for all open tabs, and updates as they happen. */
   getSessions(): Promise<Record<string, SessionInfo>>
   onSessionUpdate(cb: (s: SessionInfo) => void): () => void

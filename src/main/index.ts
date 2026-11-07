@@ -4,7 +4,18 @@ import { existsSync, mkdirSync, readdirSync, rmSync, statSync, writeFileSync } f
 import { homedir } from 'node:os'
 import { basename, join } from 'node:path'
 import { app, BrowserWindow, clipboard, dialog, ipcMain, nativeImage, Notification, shell } from 'electron'
-import type { AppState, GitInfo, HistorySession, McpServer, ProjectInfo, Result, Settings, SpawnRequest } from '../shared/types'
+import type {
+  AppState,
+  ChatPermissionDecision,
+  ChatStartRequest,
+  GitInfo,
+  HistorySession,
+  McpServer,
+  ProjectInfo,
+  Result,
+  Settings,
+  SpawnRequest
+} from '../shared/types'
 import {
   createProfile,
   ensureAllStatusLines,
@@ -17,8 +28,9 @@ import {
   validateProfileName
 } from './profiles'
 import { AccountMonitor } from './accountInfo'
+import { ChatManager, readTranscriptMessages } from './chat'
 import { getGitInfo } from './git'
-import { listHistory } from './history'
+import { listHistory, projectDirName } from './history'
 import { HookServer } from './hookServer'
 import { ensureHooks } from './hooksConfig'
 import { listMcp } from './mcp'
@@ -43,7 +55,15 @@ const terminals = new Terminals((channel, payload) => {
   sendToWindow(channel, payload)
 })
 const updater = new Updater((s) => sendToWindow('update:status', s))
-const hooks = new HookServer((tabId, event) => sessions.handle(tabId, event))
+const chat = new ChatManager(sendToWindow, {
+  onEvent: (tabId, e) => sessions.chatEvent(tabId, e),
+  onExit: (tabId) => sessions.chatProcessEnded(tabId)
+})
+const hooks = new HookServer((tabId, event) => {
+  sessions.handle(tabId, event)
+  // Chat tabs answer permission prompts in the app; the hook waits for your click.
+  if (event.hook_event_name === 'PermissionRequest' && chat.has(tabId)) return chat.requestPermission(tabId, event)
+})
 
 /** Env for any claude process the app runs for a profile (terminals and background probes). */
 function claudeEnv(profile: string, tabId = ''): Record<string, string> {
@@ -197,7 +217,8 @@ function registerIpc(): void {
       claudePath: settings.claudePath?.trim() || undefined,
       editorCommand: settings.editorCommand?.trim() || undefined,
       claudeLanguage: settings.claudeLanguage?.trim() || undefined,
-      voiceMode: settings.voiceMode && ['tap', 'hold', 'off'].includes(settings.voiceMode) ? settings.voiceMode : undefined
+      voiceMode: settings.voiceMode && ['tap', 'hold', 'off'].includes(settings.voiceMode) ? settings.voiceMode : undefined,
+      tabMode: settings.tabMode === 'terminal' ? 'terminal' : settings.tabMode === 'chat' ? 'chat' : undefined
     }
     store.save()
     applyProfileSettings()
@@ -276,6 +297,55 @@ function registerIpc(): void {
   })
 
   ipcMain.handle('sessions:get', () => sessions.all())
+
+  // ---- Chat tabs (claude -p stream-json, see chat.ts) ----
+  ipcMain.handle(
+    'chat:start',
+    (_e, req: ChatStartRequest): Result<{ tabId: string; history: Array<Record<string, unknown>> }> => {
+      const claude = resolveClaude()
+      if (!claude) return { ok: false, error: 'Claude Code was not found. Install it or set its path in Settings.' }
+      if (!profileExists(req.profile)) return { ok: false, error: `Profile "${req.profile}" does not exist.` }
+      const project = projectInfo(req.projectId)
+      if (!project?.exists) return { ok: false, error: 'Project folder not found.' }
+      let resume: string | undefined
+      let transcript: string | undefined
+      if (req.resumePath) {
+        const inProfiles = req.resumePath.toLowerCase().startsWith(PROFILES_ROOT.toLowerCase() + '\\')
+        if (!inProfiles || !req.resumePath.endsWith('.jsonl') || !existsSync(req.resumePath)) return { ok: false, error: 'Conversation file not found.' }
+        resume = transcript = req.resumePath
+      } else if (req.resumeSessionId && /^[A-Za-z0-9-]+$/.test(req.resumeSessionId)) {
+        resume = req.resumeSessionId
+        transcript = join(profileDir(req.profile), 'projects', projectDirName(project.path), `${req.resumeSessionId}.jsonl`)
+      }
+      createProfile(req.profile)
+      applyProfileSettings(req.profile)
+      const tabId = randomUUID()
+      sessions.open(tabId, profileDir(req.profile))
+      chat.open(tabId, { claude, cwd: project.path, env: claudeEnv(req.profile, tabId), resume, permissionMode: req.permissionMode })
+      const p = store.data.projects.find((x) => x.id === req.projectId)
+      if (p) {
+        p.lastProfile = req.profile
+        p.lastOpenedAt = Date.now()
+        store.save()
+      }
+      return ok({ tabId, history: transcript ? readTranscriptMessages(transcript) : [] })
+    }
+  )
+  ipcMain.handle('chat:send', (_e, tabId: string, text: string, images: string[]): Result => {
+    if (!chat.has(tabId)) return { ok: false, error: 'This chat is closed.' }
+    sessions.chatWorking(tabId)
+    const error = chat.sendMessage(tabId, String(text ?? ''), Array.isArray(images) ? images : [])
+    return error ? { ok: false, error } : ok(null)
+  })
+  ipcMain.on('chat:stop', (_e, tabId: string) => chat.stop(tabId))
+  ipcMain.on('chat:close', (_e, tabId: string) => {
+    chat.close(tabId)
+    sessions.close(tabId)
+  })
+  ipcMain.on('chat:setMode', (_e, tabId: string, mode: string | undefined) => chat.setPermissionMode(tabId, mode || undefined))
+  ipcMain.on('chat:permissionReply', (_e, tabId: string, requestId: string, decision: ChatPermissionDecision) =>
+    chat.replyPermission(tabId, requestId, decision)
+  )
 
   ipcMain.on('notify', (_e, n: { title: string; body: string; tabId: string }) => {
     if (!Notification.isSupported()) return
@@ -468,10 +538,12 @@ if (!app.requestSingleInstanceLock()) {
 
   app.on('before-quit', () => {
     monitor?.stop()
+    chat.closeAll()
     hooks.stop()
     terminals.killAll()
   })
   app.on('window-all-closed', () => {
+    chat.closeAll()
     terminals.killAll()
     app.quit()
   })

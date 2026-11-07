@@ -21,7 +21,11 @@ export class HookServer {
   private server: Server | null = null
   port = 0
 
-  constructor(private onEvent: (tabId: string, event: HookEvent) => void) {}
+  /**
+   * onEvent may return a hook response (e.g. a PermissionRequest decision). The HTTP reply waits for
+   * it; any other event is answered right away.
+   */
+  constructor(private onEvent: (tabId: string, event: HookEvent) => void | Promise<Record<string, unknown> | undefined>) {}
 
   start(): Promise<number> {
     return new Promise((resolve, reject) => {
@@ -43,13 +47,22 @@ export class HookServer {
           else chunks.push(c)
         })
         req.on('end', () => {
-          done()
-          if (!tabId) return
+          let event: HookEvent
           try {
-            this.onEvent(tabId, JSON.parse(Buffer.concat(chunks).toString('utf8')) as HookEvent)
+            event = JSON.parse(Buffer.concat(chunks).toString('utf8')) as HookEvent
           } catch {
-            // malformed: ignore
+            return done() // malformed: ignore
           }
+          if (!tabId) return done()
+          const result = this.onEvent(tabId, event)
+          if (!(result instanceof Promise)) return done()
+          result
+            .then((body) => {
+              if (!body) return done()
+              res.writeHead(200, { 'Content-Type': 'application/json' })
+              res.end(JSON.stringify(body))
+            })
+            .catch(() => done())
         })
       })
       this.server.on('error', reject)

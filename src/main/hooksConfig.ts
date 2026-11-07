@@ -12,10 +12,12 @@ import { HOOK_PATH } from './hookServer'
  * via `allowedEnvVars`. Nothing secret is written to the file.
  */
 
-const EVENTS: Array<{ event: string; matcher?: string }> = [
+const EVENTS: Array<{ event: string; matcher?: string; timeout?: number }> = [
   { event: 'SessionStart' },
   { event: 'UserPromptSubmit' },
   { event: 'PreToolUse', matcher: 'ExitPlanMode' },
+  // Chat tabs answer permission prompts in the app; terminal tabs get "no decision" right away.
+  { event: 'PermissionRequest', timeout: 600 },
   { event: 'PostToolUse' },
   { event: 'Notification' },
   { event: 'Stop' },
@@ -51,12 +53,13 @@ export function ensureHooks(dir: string, port: number): void {
     allowedEnvVars: ['CCL_TAB_ID', 'CCL_HOOK_TOKEN']
   }
   const hooks = (settings.hooks && typeof settings.hooks === 'object' ? settings.hooks : {}) as Record<string, HookGroup[]>
-  for (const { event, matcher } of EVENTS) {
+  for (const { event, matcher, timeout } of EVENTS) {
     // Drop our previous entries for this event, keep everything else.
     const groups = (Array.isArray(hooks[event]) ? hooks[event] : [])
       .map((g) => ({ ...g, hooks: (g.hooks ?? []).filter((h) => !isOurs(h)) }))
       .filter((g) => g.hooks.length > 0)
-    groups.push(matcher ? { matcher, hooks: [hook] } : { hooks: [hook] })
+    const h = timeout ? { ...hook, timeout } : hook
+    groups.push(matcher ? { matcher, hooks: [h] } : { hooks: [h] })
     hooks[event] = groups
   }
   settings.hooks = hooks

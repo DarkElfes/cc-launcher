@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   FolderSimpleIcon,
+  ChatCircleIcon,
   GearSixIcon,
   PlusIcon,
+  TerminalWindowIcon,
   SidebarSimpleIcon,
   SquaresFourIcon,
   UsersThreeIcon,
@@ -39,6 +41,8 @@ import { CONTINUE_PROMPT, HANDOFF_PROMPT, HandoffDialog, type HandoffMode } from
 import { Composer } from './composer'
 import { SessionPanel } from './panel'
 import { forget } from './termBus'
+import { ChatView } from './chat/ChatView'
+import { addNotice, addUserMessage, forgetChat, loadHistory, setBusy as setChatBusy, useChat } from './chat/store'
 import { TerminalPane } from './TerminalPane'
 import { AccountsView, Dashboard, ProjectView, SettingsView } from './views'
 import { ProfileTag, showError } from './ui'
@@ -48,6 +52,8 @@ export type View = { kind: 'dashboard' } | { kind: 'project'; id: string } | { k
 export interface Tab {
   id: string
   kind: 'project' | 'login'
+  /** 'chat': the app's own chat view (claude -p stream-json); 'terminal': Claude Code's terminal UI. */
+  mode: 'chat' | 'terminal'
   projectId?: string
   profile: string
   exitCode?: number
@@ -209,32 +215,68 @@ function Shell() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [refresh])
 
+  const addTab = useCallback((tab: Tab) => {
+    setTabs((ts) => [...ts, tab])
+    setActiveTab((a) => ({ ...a, [groupOf(tab)]: tab.id }))
+  }, [])
+
+  /** Sends a message in a chat tab (shows it right away; Claude's reply streams in). */
+  const chatSend = useCallback(async (tabId: string, text: string, images: string[] = []) => {
+    addUserMessage(tabId, text, images)
+    const r = await window.api.chatSend(tabId, text, images)
+    if (!r.ok) {
+      setChatBusy(tabId, false)
+      addNotice(tabId, r.error, 'error')
+      return false
+    }
+    return true
+  }, [])
+
   const openTerminal = useCallback(
-    async (req: Omit<SpawnRequest, 'cols' | 'rows'>) => {
+    async (req: Omit<SpawnRequest, 'cols' | 'rows'> & { mode?: 'chat' | 'terminal' }) => {
+      const mode = req.kind === 'login' ? 'terminal' : (req.mode ?? live.current.state?.settings.tabMode ?? 'chat')
+      if (mode === 'chat') {
+        const res = await window.api.chatStart({
+          projectId: req.projectId!,
+          profile: req.profile,
+          resumeSessionId: req.resumeSessionId,
+          resumePath: req.resumePath
+        })
+        if (!res.ok) return showError(res.error)
+        loadHistory(res.value.tabId, res.value.history)
+        addTab({ id: res.value.tabId, kind: 'project', mode: 'chat', projectId: req.projectId, profile: req.profile, startedAt: Date.now() })
+        if (req.initialPrompt) void chatSend(res.value.tabId, req.initialPrompt)
+        void refresh()
+        return
+      }
       const res = await window.api.spawnTerminal({ ...req, cols: 120, rows: 32 })
       if (!res.ok) return showError(res.error)
-      const tab: Tab = { id: res.value, kind: req.kind, projectId: req.projectId, profile: req.profile, startedAt: Date.now() }
-      setTabs((ts) => [...ts, tab])
-      setActiveTab((a) => ({ ...a, [groupOf(tab)]: tab.id }))
+      addTab({ id: res.value, kind: req.kind, mode: 'terminal', projectId: req.projectId, profile: req.profile, startedAt: Date.now() })
       void refresh()
     },
-    [refresh]
+    [refresh, addTab, chatSend]
   )
 
   const closeTab = useCallback(
     async (tab: Tab) => {
+      const busy = tab.mode === 'chat' ? live.current.sessions[tab.id]?.activity === 'working' : tab.exitCode === undefined
       if (
-        tab.exitCode === undefined &&
+        busy &&
         !(await confirm({
           title: 'Close this session?',
-          description: `Claude Code (${tab.profile}) is still running in this tab. Closing it stops the process.`,
+          description: `Claude Code (${tab.profile}) is still ${tab.mode === 'chat' ? 'working' : 'running'} in this tab. Closing it stops it.`,
           action: 'Close tab',
           destructive: true
         }))
       )
         return
-      window.api.killTerminal(tab.id)
-      forget(tab.id)
+      if (tab.mode === 'chat') {
+        window.api.chatClose(tab.id)
+        forgetChat(tab.id)
+      } else {
+        window.api.killTerminal(tab.id)
+        forget(tab.id)
+      }
       setSessions(({ [tab.id]: _, ...rest }) => rest)
       setUnseen(({ [tab.id]: _, ...rest }) => rest)
       setTabs((ts) => {
@@ -268,8 +310,13 @@ function Shell() {
       })
       if (!ok) return
       for (const t of tabs.filter((t) => t.projectId === project.id)) {
-        window.api.killTerminal(t.id)
-        forget(t.id)
+        if (t.mode === 'chat') {
+          window.api.chatClose(t.id)
+          forgetChat(t.id)
+        } else {
+          window.api.killTerminal(t.id)
+          forget(t.id)
+        }
       }
       setTabs((ts) => ts.filter((t) => t.projectId !== project.id))
       await window.api.removeProject(project.id)
@@ -302,6 +349,7 @@ function Shell() {
   })()
   const activeId = activeTabObj?.id
   const voiceTap = state?.settings.voiceMode === 'tap'
+  const activeChat = useChat(activeTabObj?.mode === 'chat' ? activeTabObj.id : '')
 
   // Looking at a tab (window focused) clears its "unseen" mark.
   useEffect(() => {
@@ -387,6 +435,10 @@ function Shell() {
   } | null>(null)
 
   const sendToTab = (tabId: string, text: string) => {
+    if (live.current.tabs.find((t) => t.id === tabId)?.mode === 'chat') {
+      void chatSend(tabId, text)
+      return
+    }
     window.api.writeTerminal(tabId, text)
     setTimeout(() => window.api.writeTerminal(tabId, '\r'), 300)
   }
@@ -586,6 +638,12 @@ function Shell() {
               <ProjectView
                 project={project}
                 profiles={state.profiles}
+                mode={state.settings.tabMode ?? 'chat'}
+                onModeChange={async (tabMode) => {
+                  const r = await window.api.saveSettings({ ...state.settings, tabMode })
+                  if (!r.ok) showError(r.error)
+                  void refresh()
+                }}
                 onLaunch={(profile) => openTerminal({ kind: 'project', projectId: project.id, profile })}
                 onRemove={() => removeProject(project)}
               />
@@ -616,6 +674,11 @@ function Shell() {
                         )}
                       >
                         <SignalDot signal={tabSignal(t)} />
+                        {t.mode === 'chat' ? (
+                          <ChatCircleIcon className="size-3.5 shrink-0" />
+                        ) : (
+                          <TerminalWindowIcon className="size-3.5 shrink-0" />
+                        )}
                         <ProfileTag name={t.profile} />
                         <span className={cn(t.exitCode !== undefined && 'line-through')}>
                           {t.kind === 'login' ? 'sign in' : (sessions[t.id]?.sessionName?.slice(0, 28) ?? 'claude')}
@@ -637,15 +700,15 @@ function Shell() {
                 </div>
               )}
               <div className="relative min-h-0 flex-1 bg-background">
-                {/* Every terminal stays mounted; only the active one in the current view is shown. */}
-                {tabs.map((t) => (
-                  <TerminalPane
-                    key={t.id}
-                    id={t.id}
-                    exitCode={t.exitCode}
-                    active={showTerminals && groupOf(t) === currentGroup && activeTab[currentGroup!] === t.id}
-                  />
-                ))}
+                {/* Every tab stays mounted; only the active one in the current view is shown. */}
+                {tabs.map((t) => {
+                  const active = showTerminals && groupOf(t) === currentGroup && activeTab[currentGroup!] === t.id
+                  return t.mode === 'chat' ? (
+                    <ChatView key={t.id} tabId={t.id} active={active} />
+                  ) : (
+                    <TerminalPane key={t.id} id={t.id} exitCode={t.exitCode} active={active} />
+                  )
+                })}
                 {showTerminals && groupTabs.length === 0 && (
                   <p className="p-6 text-xs text-muted-foreground">
                     {view.kind === 'accounts' ? 'Sign-in terminals appear here.' : 'No Claude Code session open. Pick an account above to start one.'}
@@ -656,8 +719,23 @@ function Shell() {
                 <Composer
                   tabId={activeTabObj.id}
                   activity={sessions[activeTabObj.id]?.activity}
-                  voiceOn={voiceTap}
-                  onDictate={() => dictate(activeTabObj)}
+                  voiceOn={voiceTap && activeTabObj.mode === 'terminal'}
+                  onDictate={() =>
+                    activeTabObj.mode === 'chat'
+                      ? toast('Voice dictation works in terminal tabs', {
+                          id: 'voice-chat',
+                          description:
+                            "Claude Code's dictation only exists in its terminal UI. Open this account as a Terminal tab to dictate."
+                        })
+                      : dictate(activeTabObj)
+                  }
+                  {...(activeTabObj.mode === 'chat'
+                    ? {
+                        onSend: (text: string, images: string[]) => chatSend(activeTabObj.id, text, images),
+                        busy: activeChat.busy,
+                        onStop: () => window.api.chatStop(activeTabObj.id)
+                      }
+                    : {})}
                 />
               )}
             </section>

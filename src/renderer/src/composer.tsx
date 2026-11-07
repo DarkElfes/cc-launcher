@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ClipboardEvent, type DragEvent, type KeyboardEvent } from 'react'
-import { ImageIcon, InfoIcon, MicrophoneIcon, PaperPlaneRightIcon, WarningCircleIcon, XIcon } from '@phosphor-icons/react'
+import { ImageIcon, InfoIcon, MicrophoneIcon, PaperPlaneRightIcon, StopIcon, WarningCircleIcon, XIcon } from '@phosphor-icons/react'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
@@ -115,6 +115,11 @@ export function Composer(props: {
   voiceOn: boolean
   /** Starts/stops dictation (or explains how to turn it on). */
   onDictate: () => void
+  /** Chat tabs: send through the app instead of pasting into a terminal. */
+  onSend?: (text: string, images: string[]) => Promise<boolean>
+  /** Chat tabs: Claude is working; show Stop. */
+  busy?: boolean
+  onStop?: () => void
 }) {
   const { tabId } = props
   const [text, setText] = useState(() => drafts.get(tabId)?.text ?? '')
@@ -143,15 +148,19 @@ export function Composer(props: {
     if (!canSend) return
     setSending(true)
     try {
-      // Images first, one paste each, so Claude Code turns every path into an attachment.
-      for (const p of images) {
-        pasteInto(tabId, `"${p}" `)
-        await sleep(120)
-      }
       const msg = text.replace(/\s+$/, '')
-      if (msg) pasteInto(tabId, msg)
-      await sleep(150)
-      window.api.writeTerminal(tabId, '\r')
+      if (props.onSend) {
+        if (!(await props.onSend(msg, images))) return
+      } else {
+        // Terminal: images first, one paste each, so Claude Code turns every path into an attachment.
+        for (const p of images) {
+          pasteInto(tabId, `"${p}" `)
+          await sleep(120)
+        }
+        if (msg) pasteInto(tabId, msg)
+        await sleep(150)
+        window.api.writeTerminal(tabId, '\r')
+      }
       if (msg) history.set(tabId, [msg, ...(history.get(tabId) ?? []).filter((h) => h !== msg)].slice(0, 50))
       setText('')
       setImages([])
@@ -213,7 +222,9 @@ export function Composer(props: {
       {waiting && (
         <p className="mb-1.5 flex items-center gap-1.5 text-[11px] text-amber-300">
           <WarningCircleIcon className="size-3.5" />
-          Claude is asking something in the terminal above (permission or a choice). Answer there first.
+          {props.onSend
+            ? 'Claude is waiting for your answer above (permission or a question).'
+            : 'Claude is asking something in the terminal above (permission or a choice). Answer there first.'}
         </p>
       )}
       {images.length > 0 && (
@@ -261,7 +272,12 @@ export function Composer(props: {
         >
           <ImageIcon />
         </Button>
-        <Button size="icon" title={waiting ? 'Answer Claude in the terminal first' : 'Send (Enter)'} disabled={!canSend} onClick={() => void send()}>
+        {props.busy && props.onStop && (
+          <Button size="icon" variant="destructive" title="Stop Claude" onClick={props.onStop}>
+            <StopIcon weight="fill" />
+          </Button>
+        )}
+        <Button size="icon" title={waiting ? 'Answer Claude first' : props.busy ? 'Send (queued after the current work)' : 'Send (Enter)'} disabled={!canSend} onClick={() => void send()}>
           <PaperPlaneRightIcon />
         </Button>
       </div>

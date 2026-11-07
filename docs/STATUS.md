@@ -110,6 +110,27 @@ _Last updated: 2026-11-07_
   labelled "Screenshot <time>" instead of the generated file name. The placeholder is gone; an **ⓘ** tooltip
   next to the box lists everything it can do.
 
+- **0.9.0 (local build, not released)**: **Chat mode**, like the Claude app. Tabs open as Chat (default) or
+  Terminal (switch next to the account buttons, saved as `settings.tabMode`).
+  - `main/chat.ts`: one `claude -p --input-format stream-json --output-format stream-json --verbose
+    --include-partial-messages` process per chat tab, using documented flags only. Images go as base64
+    content blocks. **Stop** ends the process; the next message resumes with `--resume <session>`. Changing
+    the permission mode restarts it the same way.
+  - **Permissions** via the documented `PermissionRequest` HTTP hook (timeout 600 s): for chat tabs the hook
+    waits for Allow / Always allow (Claude's `permission_suggestions`) / Deny (+ reason). AskUserQuestion →
+    option buttons (answers via `updatedInput`); ExitPlanMode → "Approve plan / Keep planning". Terminal
+    tabs get no decision, so their normal prompt shows.
+  - `renderer/chat/store.ts` turns events into items: user bubbles (with thumbnails), streaming Markdown
+    text, thinking, tool cards (diffs for Edit, commands, outputs, subagent step counts), permission cards,
+    notices, and "Done · time · API-price".
+  - Resumed sessions show earlier messages from the transcript (best effort; internal format).
+  - Session panel stats for chat tabs come from stream events (context from `usage`, cost from `result`).
+  - Not using the Agent SDK: its docs disallow claude.ai login in third-party products. The CLI in -p
+    mode is Claude Code itself.
+  - Tested end-to-end (darkness): Write needed approval → card → Allow → file created, Markdown bold,
+    footer, panel stats, no page errors. **Not yet tested:** AskUserQuestion, plan approval, Stop/resume,
+    images in chat, subagents.
+
 ## In progress
 - Nothing.
 

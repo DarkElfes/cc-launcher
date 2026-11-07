@@ -1,7 +1,9 @@
 import { useState, type ReactNode } from 'react'
 import {
   ArrowClockwiseIcon,
+  ChatCircleIcon,
   CodeIcon,
+  TerminalWindowIcon,
   FolderOpenIcon,
   FolderPlusIcon,
   FolderSimpleIcon,
@@ -125,6 +127,8 @@ export function Dashboard(props: {
 export function ProjectView(props: {
   project: ProjectInfo
   profiles: ProfileInfo[]
+  mode: 'chat' | 'terminal'
+  onModeChange: (mode: 'chat' | 'terminal') => void
   onLaunch: (profile: string) => void
   onRemove: () => void
 }) {
@@ -156,8 +160,29 @@ export function ProjectView(props: {
         <p className="text-xs text-destructive">The folder no longer exists. Remove the project or restore the folder.</p>
       ) : (
         <div className="flex flex-wrap items-center gap-2">
+          <div className="flex border" role="group" aria-label="Open as">
+            {(
+              [
+                ['chat', 'Chat', ChatCircleIcon, 'Messages, tool cards and permission buttons, drawn by this app'],
+                ['terminal', 'Terminal', TerminalWindowIcon, "Claude Code's own terminal interface (voice dictation works here)"]
+              ] as const
+            ).map(([m, label, Icon, hint]) => (
+              <button
+                key={m}
+                title={hint}
+                onClick={() => props.onModeChange(m)}
+                className={cn(
+                  'flex items-center gap-1.5 px-2 py-1 text-xs',
+                  props.mode === m ? 'bg-secondary text-foreground' : 'text-muted-foreground hover:text-foreground'
+                )}
+              >
+                <Icon className="size-3.5" />
+                {label}
+              </button>
+            ))}
+          </div>
           <span className="text-xs text-muted-foreground">
-            {profiles.length ? 'Open Claude Code with' : 'No accounts yet. Add one under Accounts first.'}
+            {profiles.length ? 'with' : 'No accounts yet. Add one under Accounts first.'}
           </span>
           {profiles.map((p) => (
             <Button
