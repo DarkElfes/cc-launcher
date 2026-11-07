@@ -257,6 +257,42 @@ function Shell() {
     [refresh, addTab, chatSend]
   )
 
+  // ---- Reopen the tabs that were open last time (each continues its conversation) ----
+  const restored = useRef(false)
+  const [restoring, setRestoring] = useState(true)
+  useEffect(() => {
+    if (!state || restored.current) return
+    restored.current = true
+    const saved = state.openTabs.filter((t) => state.projects.some((p) => p.id === t.projectId && p.exists))
+    void (async () => {
+      for (const t of saved) {
+        await openTerminal({ kind: 'project', projectId: t.projectId, profile: t.profile, resumeSessionId: t.sessionId, mode: t.mode })
+      }
+      const active = saved.find((t) => t.active) ?? saved.at(-1)
+      if (active) setView({ kind: 'project', id: active.projectId })
+      setRestoring(false)
+    })()
+  }, [state, openTerminal])
+
+  // Remember open tabs (once each has a session id) so a restart or update brings them back.
+  useEffect(() => {
+    if (restoring) return
+    const t = setTimeout(() => {
+      const list = tabs
+        .filter((x) => x.kind === 'project' && (x.mode === 'chat' || x.exitCode === undefined))
+        .map((x) => ({
+          projectId: x.projectId!,
+          profile: x.profile,
+          mode: x.mode,
+          sessionId: sessions[x.id]?.sessionId ?? '',
+          active: activeTab[x.projectId!] === x.id && view.kind === 'project' && view.id === x.projectId
+        }))
+        .filter((x) => x.sessionId)
+      window.api.saveOpenTabs(list)
+    }, 500)
+    return () => clearTimeout(t)
+  }, [tabs, sessions, activeTab, view, restoring])
+
   const closeTab = useCallback(
     async (tab: Tab) => {
       const busy = tab.mode === 'chat' ? live.current.sessions[tab.id]?.activity === 'working' : tab.exitCode === undefined

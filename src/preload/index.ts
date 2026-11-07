@@ -37,6 +37,7 @@ const api: Api = {
   killTerminal: (id) => ipcRenderer.send('term:kill', id),
   onTermData: (cb) => listen<TermDataEvent>('term:data', cb),
   onTermExit: (cb) => listen<TermExitEvent>('term:exit', cb),
+  saveOpenTabs: (tabs) => ipcRenderer.send('tabs:save', tabs),
   chatStart: (req) => ipcRenderer.invoke('chat:start', req),
   chatSend: (tabId, text, images) => ipcRenderer.invoke('chat:send', tabId, text, images),
   chatStop: (tabId) => ipcRenderer.send('chat:stop', tabId),

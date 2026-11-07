@@ -13,6 +13,7 @@ import type {
   McpServer,
   ProjectInfo,
   Result,
+  SavedTab,
   Settings,
   SpawnRequest
 } from '../shared/types'
@@ -136,6 +137,7 @@ function projectInfo(id: string): ProjectInfo | undefined {
 function getState(): AppState {
   return {
     appVersion: app.getVersion(),
+    openTabs: store.data.openTabs,
     update: updater.status,
     projects: store.data.projects
       .map((p) => ({ ...p, exists: isDir(p.path) }))
@@ -298,6 +300,17 @@ function registerIpc(): void {
 
   ipcMain.handle('sessions:get', () => sessions.all())
 
+  ipcMain.on('tabs:save', (_e, tabs: SavedTab[]) => {
+    if (!Array.isArray(tabs)) return
+    const clean = tabs
+      .filter((t) => t && typeof t.projectId === 'string' && /^[A-Za-z0-9-]+$/.test(String(t.sessionId)) && !validateProfileName(String(t.profile)))
+      .map((t) => ({ projectId: t.projectId, profile: t.profile, mode: t.mode === 'terminal' ? 'terminal' : 'chat', sessionId: t.sessionId, active: !!t.active }) as SavedTab)
+      .slice(0, 30)
+    if (JSON.stringify(clean) === JSON.stringify(store.data.openTabs)) return
+    store.data.openTabs = clean
+    store.save()
+  })
+
   // ---- Chat tabs (claude -p stream-json, see chat.ts) ----
   ipcMain.handle(
     'chat:start',
@@ -321,6 +334,7 @@ function registerIpc(): void {
       applyProfileSettings(req.profile)
       const tabId = randomUUID()
       sessions.open(tabId, profileDir(req.profile))
+      if (resume) sessions.setSessionId(tabId, basename(resume).replace(/\.jsonl$/, ''))
       chat.open(tabId, { claude, cwd: project.path, env: claudeEnv(req.profile, tabId), resume, permissionMode: req.permissionMode })
       const p = store.data.projects.find((x) => x.id === req.projectId)
       if (p) {

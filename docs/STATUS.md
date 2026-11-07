@@ -131,6 +131,11 @@ _Last updated: 2026-11-07_
     footer, panel stats, no page errors. **Not yet tested:** AskUserQuestion, plan approval, Stop/resume,
     images in chat, subagents.
 
+- **0.9.1 (local build, not released)**: **open tabs survive restarts/updates**. The renderer saves
+  `{projectId, profile, mode, sessionId, active}` for each tab (`tabs:save` → `store.openTabs`); at startup
+  they're reopened with `--resume <sessionId>`, and chat tabs show their earlier messages. Resumed chat tabs
+  know their session id right away. Tested: resume → restart → tab back with its messages.
+
 ## In progress
 - Nothing.
 

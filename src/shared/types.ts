@@ -194,8 +194,19 @@ export interface UpdateStatus {
   error?: string
 }
 
+/** A Claude tab to reopen after the app restarts (its conversation continues via --resume). */
+export interface SavedTab {
+  projectId: string
+  profile: string
+  mode: 'chat' | 'terminal'
+  sessionId: string
+  active?: boolean
+}
+
 export interface AppState {
   appVersion: string
+  /** Tabs that were open when the app last closed. */
+  openTabs: SavedTab[]
   update: UpdateStatus
   /** True while account emails / plan usage are being refreshed in the background. */
   accountsRefreshing: boolean
@@ -260,6 +271,8 @@ export interface Api {
   killTerminal(id: string): void
   onTermData(cb: (e: TermDataEvent) => void): () => void
   onTermExit(cb: (e: TermExitEvent) => void): () => void
+  /** Remembers which tabs are open, to reopen them after a restart. */
+  saveOpenTabs(tabs: SavedTab[]): void
   // ---- Chat mode (claude -p stream-json) ----
   chatStart(req: ChatStartRequest): Promise<Result<{ tabId: string; history: Array<Record<string, unknown>> }>>
   chatSend(tabId: string, text: string, imagePaths: string[]): Promise<Result>

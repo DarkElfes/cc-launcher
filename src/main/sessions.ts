@@ -45,6 +45,11 @@ export class SessionTracker {
     this.update(tabId, () => {}) // let the UI know about the new tab right away
   }
 
+  /** Known before Claude reports it (a resumed chat tab that hasn't sent anything yet). */
+  setSessionId(tabId: string, sessionId: string): void {
+    this.update(tabId, (s) => (s.sessionId ??= sessionId))
+  }
+
   /** The claude process of a tab exited (the tab may stay open to show its last screen). */
   exited(tabId: string): void {
     this.update(tabId, (s) => {

@@ -1,14 +1,15 @@
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
 import { dirname } from 'node:path'
-import type { Project, Settings } from '../shared/types'
+import type { Project, SavedTab, Settings } from '../shared/types'
 
 interface StoreData {
   version: 1
   projects: Project[]
   settings: Settings
+  openTabs: SavedTab[]
 }
 
-const EMPTY: StoreData = { version: 1, projects: [], settings: {} }
+const EMPTY: StoreData = { version: 1, projects: [], settings: {}, openTabs: [] }
 
 /** App data (project list, settings) kept in one JSON file. Never holds credentials. */
 export class Store {
@@ -25,7 +26,8 @@ export class Store {
       return {
         version: 1,
         projects: Array.isArray(raw.projects) ? raw.projects : [],
-        settings: raw.settings ?? {}
+        settings: raw.settings ?? {},
+        openTabs: Array.isArray(raw.openTabs) ? raw.openTabs : []
       }
     } catch {
       // Keep the broken file for inspection and start fresh.
