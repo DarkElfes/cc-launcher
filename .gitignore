@@ -1,0 +1,9 @@
+node_modules/
+out/
+dist/
+*.log
+
+# Never commit Claude credentials or profile folders, even by accident.
+.credentials.json
+.claude.json
+.claude-profiles/

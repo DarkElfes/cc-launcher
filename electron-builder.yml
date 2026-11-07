@@ -1,0 +1,31 @@
+# Windows installer (NSIS) + auto-update metadata.
+appId: dev.cclauncher.app
+productName: cc-launcher
+directories:
+  output: dist
+  buildResources: build
+files:
+  - out/**
+  - package.json
+# node-pty ships native binaries that can't be loaded from inside the asar archive.
+asarUnpack:
+  - '**/node_modules/@lydell/**'
+win:
+  target:
+    - target: nsis
+      arch: [x64]
+  artifactName: ${productName}-Setup-${version}.${ext}
+nsis:
+  oneClick: true # per-user install, no admin prompt; best fit for silent auto-updates
+  perMachine: false
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: cc-launcher
+  deleteAppDataOnUninstall: false # keeps the project list; Claude profiles live in ~/.claude-profiles anyway
+# Where installed apps look for updates. Fill in your GitHub repo and run `pnpm release`
+# to upload a new version; installed copies pick it up automatically.
+# publish:
+#   provider: github
+#   owner: YOUR_GITHUB_USER
+#   repo: cc-launcher
+#   releaseType: release
