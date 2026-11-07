@@ -98,6 +98,8 @@ export function profileEnv(name: string): Record<string, string> {
   // Don't leak settings from whatever launched this app (for example a Claude Code session).
   delete env.CLAUDECODE
   delete env.CLAUDE_CODE_ENTRYPOINT
+  delete env.CLAUDE_CODE_CHILD_SESSION // otherwise the session thinks it's a child and turns off transcripts
+  delete env.CLAUDE_CODE_SSE_PORT
   env.CLAUDE_CONFIG_DIR = profileDir(name)
   env.COLORTERM = 'truecolor'
   return env

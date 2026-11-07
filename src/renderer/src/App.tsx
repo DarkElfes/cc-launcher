@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { FolderSimpleIcon, GearSixIcon, MicrophoneIcon, PlusIcon, SquaresFourIcon, UsersThreeIcon, WarningIcon, XIcon } from '@phosphor-icons/react'
 import { toast } from 'sonner'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
@@ -38,6 +38,8 @@ export interface Tab {
   projectId?: string
   profile: string
   exitCode?: number
+  /** Epoch ms; sessions started before voice was turned on don't have it. */
+  startedAt: number
 }
 
 /** Key for the group of tabs shown in a view: a project id, or "accounts" for sign-in tabs. */
@@ -121,7 +123,7 @@ function Shell() {
     async (req: Omit<SpawnRequest, 'cols' | 'rows'>) => {
       const res = await window.api.spawnTerminal({ ...req, cols: 120, rows: 32 })
       if (!res.ok) return showError(res.error)
-      const tab: Tab = { id: res.value, kind: req.kind, projectId: req.projectId, profile: req.profile }
+      const tab: Tab = { id: res.value, kind: req.kind, projectId: req.projectId, profile: req.profile, startedAt: Date.now() }
       setTabs((ts) => [...ts, tab])
       setActiveTab((a) => ({ ...a, [groupOf(tab)]: tab.id }))
       void refresh()
@@ -191,25 +193,77 @@ function Shell() {
     return m
   }, [tabs])
 
-  // Ctrl+Space anywhere in the window: start/stop voice dictation in the visible Claude terminal.
-  const activeId = (() => {
+  // ---- Voice dictation (Dictate button / Ctrl+Space) ----
+  const activeTabObj = (() => {
     const group = view.kind === 'project' ? view.id : view.kind === 'accounts' ? 'accounts' : null
     const id = group ? activeTab[group] : undefined
-    return tabs.find((t) => t.id === id && t.exitCode === undefined)?.id
+    return tabs.find((t) => t.id === id && t.exitCode === undefined)
   })()
+  const activeId = activeTabObj?.id
   const voiceTap = state?.settings.voiceMode === 'tap'
+
+  // When voice was turned on in this run: sessions started earlier don't have it yet.
+  const voiceOnSince = useRef(0)
+  const prevVoice = useRef<string | undefined | null>(null) // null = state not loaded yet
   useEffect(() => {
-    if (!activeId || !voiceTap) return
+    if (!state) return
+    const now = state.settings.voiceMode
+    if (prevVoice.current !== null && prevVoice.current !== 'tap' && now === 'tap') voiceOnSince.current = Date.now()
+    prevVoice.current = now
+  }, [state])
+
+  const enableVoice = useCallback(async () => {
+    if (!state) return
+    const r = await window.api.saveSettings({ ...state.settings, voiceMode: 'tap' })
+    if (!r.ok) return showError(r.error)
+    await refresh()
+    toast.success('Voice dictation is on for all accounts', {
+      description: 'Open a new Claude tab, then press Ctrl+Space (or Dictate) and talk. Press again to send.'
+    })
+  }, [state, refresh])
+
+  const dictate = useCallback(
+    (tab: Tab) => {
+      if (!voiceTap) {
+        toast('Voice dictation is off', {
+          id: 'voice-off',
+          description: state?.settings.claudeLanguage
+            ? 'Turn it on for all accounts (tap mode)?'
+            : 'Turn it on for all accounts (tap mode)? Also set Claude language in Settings, or dictation expects English.',
+          action: { label: 'Turn on', onClick: () => void enableVoice() }
+        })
+        return
+      }
+      if (tab.startedAt < voiceOnSince.current) {
+        toast('This session started before voice was turned on', {
+          id: 'voice-old-session',
+          description: 'Dictation works in sessions started after that. Open a new tab for this account.',
+          action: {
+            label: 'New tab',
+            onClick: () => void openTerminal({ kind: tab.kind, projectId: tab.projectId, profile: tab.profile })
+          }
+        })
+        return
+      }
+      window.api.dictate(tab.id)
+      // Give keyboard focus back to the terminal.
+      ;(document.querySelector('.terminal-host[style*="block"] textarea') as HTMLTextAreaElement | null)?.focus()
+    },
+    [voiceTap, state, enableVoice, openTerminal]
+  )
+
+  useEffect(() => {
+    if (!activeTabObj) return
     const onKey = (e: KeyboardEvent) => {
       if (e.type === 'keydown' && e.ctrlKey && !e.altKey && !e.shiftKey && e.code === 'Space' && !e.repeat) {
         e.preventDefault()
         e.stopPropagation()
-        window.api.dictate(activeId)
+        dictate(activeTabObj)
       }
     }
     window.addEventListener('keydown', onKey, true) // capture: before xterm sees it
     return () => window.removeEventListener('keydown', onKey, true)
-  }, [activeId, voiceTap])
+  }, [activeTabObj, dictate])
 
   if (!state) return <div className="p-8 text-sm text-muted-foreground">Loading…</div>
 
@@ -344,25 +398,21 @@ function Shell() {
                   </div>
                 )
               })}
-              {activeId && (
+              {activeTabObj && (
                 <div className="ml-auto flex items-center pr-2">
                   <Button
                     variant="ghost"
                     size="xs"
-                    disabled={!voiceTap}
+                    className={cn(!voiceTap && 'text-muted-foreground')}
                     title={
                       voiceTap
                         ? 'Voice dictation: click (or Ctrl+Space) to start talking, again to send'
-                        : 'Turn on voice (tap mode) in Settings to use this button'
+                        : 'Voice dictation is off. Click to turn it on.'
                     }
-                    onClick={() => {
-                      window.api.dictate(activeId)
-                      // Give keyboard focus back to the terminal.
-                      ;(document.querySelector('.terminal-host[style*="block"] textarea') as HTMLTextAreaElement | null)?.focus()
-                    }}
+                    onClick={() => dictate(activeTabObj)}
                   >
                     <MicrophoneIcon data-icon="inline-start" />
-                    Dictate
+                    {voiceTap ? 'Dictate' : 'Dictate (off)'}
                     <kbd className="ml-1 text-[10px] text-muted-foreground">Ctrl+Space</kbd>
                   </Button>
                 </div>
