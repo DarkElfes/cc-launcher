@@ -10,6 +10,7 @@ import {
   ensureAllStatusLines,
   listProfileNames,
   listProfiles,
+  PROFILES_ROOT,
   profileDir,
   profileEnv,
   profileExists,
@@ -226,7 +227,17 @@ function registerIpc(): void {
 
     try {
       const tabId = randomUUID()
-      const args = req.resumeSessionId && /^[A-Za-z0-9-]+$/.test(req.resumeSessionId) ? ['--resume', req.resumeSessionId] : []
+      const args: string[] = []
+      if (req.resumePath) {
+        // Only conversation files inside our profile folders (it may be another account's).
+        const p = req.resumePath
+        const inProfiles = p.toLowerCase().startsWith(PROFILES_ROOT.toLowerCase() + '\\')
+        if (!inProfiles || !p.endsWith('.jsonl') || !existsSync(p)) return { ok: false, error: 'Conversation file not found.' }
+        args.push('--resume', p)
+      } else if (req.resumeSessionId && /^[A-Za-z0-9-]+$/.test(req.resumeSessionId)) {
+        args.push('--resume', req.resumeSessionId)
+      }
+      if (req.initialPrompt?.trim()) args.push(req.initialPrompt.trim().slice(0, 4000))
       sessions.open(tabId, profileDir(req.profile))
       const id = terminals.spawn({ id: tabId, file: claude, args, cwd, env: claudeEnv(req.profile, tabId), cols: req.cols, rows: req.rows })
       if (req.kind === 'project') {

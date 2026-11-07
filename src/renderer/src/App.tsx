@@ -36,6 +36,7 @@ import { ConfirmProvider, useConfirm } from '@/components/confirm'
 import type { AppState, HistorySession, ProjectInfo, SessionInfo, SpawnRequest } from '../../shared/types'
 import iconUrl from '../../../build/icon.svg'
 import { SignalDot, signalOf, strongest } from './activity'
+import { CONTINUE_PROMPT, HANDOFF_PROMPT, HandoffDialog, type HandoffMode } from './handoff'
 import { SessionPanel } from './panel'
 import { forget } from './termBus'
 import { TerminalPane } from './TerminalPane'
@@ -374,6 +375,94 @@ function Shell() {
     return () => window.removeEventListener('keydown', onKey, true)
   }, [activeTabObj, dictate])
 
+  // ---- Hand off to another account ----
+  // phase: 'wait-idle' (Claude still busy) -> 'writing' (STATUS.md prompt sent) -> new tab on the target.
+  const [handoffOpen, setHandoffOpen] = useState(false)
+  const [handoff, setHandoff] = useState<{
+    from: string
+    to: string
+    projectId: string
+    phase: 'wait-idle' | 'writing'
+    sawWorking: boolean
+  } | null>(null)
+
+  const sendToTab = (tabId: string, text: string) => {
+    window.api.writeTerminal(tabId, text)
+    setTimeout(() => window.api.writeTerminal(tabId, '\r'), 300)
+  }
+
+  const finishHandoff = useCallback(
+    (h: NonNullable<typeof handoff>) => {
+      setHandoff(null)
+      void openTerminal({ kind: 'project', projectId: h.projectId, profile: h.to, initialPrompt: CONTINUE_PROMPT })
+      const from = live.current.tabs.find((t) => t.id === h.from)
+      // Same id: replaces the "updating STATUS.md…" loading toast.
+      toast.success(`Handed off to ${h.to}`, {
+        id: 'handoff',
+        duration: 10_000,
+        cancel: undefined,
+        description: 'It reads docs/STATUS.md and continues. You can close the old tab.',
+        action: from ? { label: 'Close old tab', onClick: () => void closeTab(from) } : undefined
+      })
+    },
+    [openTerminal, closeTab]
+  )
+
+  const startHandoff = useCallback(
+    (from: Tab, to: string, mode: HandoffMode) => {
+      const s = live.current.sessions[from.id]
+      if (mode === 'full') {
+        if (!s?.transcriptPath) return showError('This session has no saved conversation yet.')
+        void openTerminal({ kind: 'project', projectId: from.projectId, profile: to, resumePath: s.transcriptPath })
+        toast.success(`Continuing the conversation on ${to}`, {
+          description: 'Close the old tab so both accounts don\'t work on the same thing.',
+          action: { label: 'Close old tab', onClick: () => void closeTab(from) }
+        })
+        return
+      }
+      const busy = s?.activity === 'working'
+      if (!busy) sendToTab(from.id, HANDOFF_PROMPT)
+      setHandoff({ from: from.id, to, projectId: from.projectId!, phase: busy ? 'wait-idle' : 'writing', sawWorking: false })
+      toast.loading(busy ? `Waiting for Claude (${from.profile}) to finish…` : `Claude (${from.profile}) is updating docs/STATUS.md…`, {
+        id: 'handoff',
+        duration: Infinity,
+        description: `Then a new ${to} session continues from it.`,
+        action: { label: 'Open now', onClick: () => finishHandoff({ from: from.id, to, projectId: from.projectId!, phase: 'writing', sawWorking: true }) },
+        cancel: { label: 'Cancel', onClick: () => setHandoff(null) }
+      })
+    },
+    [openTerminal, closeTab, finishHandoff]
+  )
+
+  // Drive the summary handoff from the old tab's activity.
+  useEffect(() => {
+    if (!handoff) return
+    const a = sessions[handoff.from]?.activity
+    if (handoff.phase === 'wait-idle' && (a === 'done' || a === 'idle')) {
+      sendToTab(handoff.from, HANDOFF_PROMPT)
+      setHandoff({ ...handoff, phase: 'writing', sawWorking: false })
+      toast.loading('Claude is updating docs/STATUS.md…', { id: 'handoff', duration: Infinity })
+    } else if (handoff.phase === 'writing') {
+      if (a === 'working' && !handoff.sawWorking) setHandoff({ ...handoff, sawWorking: true })
+      else if (a === 'done' && handoff.sawWorking) finishHandoff(handoff)
+      else if (a === 'needs-you')
+        toast.loading('Claude needs your OK in the old tab (for example, to commit).', {
+          id: 'handoff',
+          duration: Infinity,
+          description: 'Approve it there; the handoff continues when Claude finishes.'
+        })
+    }
+    if (a === 'error' || a === 'ended') {
+      setHandoff(null)
+      toast.error('Handoff stopped: the old session failed or closed', {
+        id: 'handoff',
+        duration: 10_000,
+        action: { label: 'Open anyway', onClick: () => finishHandoff({ ...handoff, sawWorking: true }) }
+      })
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [handoff, sessions])
+
   const togglePanel = useCallback(() => {
     setPanelOpen((open) => {
       try {
@@ -595,6 +684,17 @@ function Shell() {
               onResume={(h: HistorySession) =>
                 void openTerminal({ kind: 'project', projectId: project!.id, profile: h.profile, resumeSessionId: h.id })
               }
+              onHandoff={panelTab && panelTab.exitCode === undefined && !handoff ? () => setHandoffOpen(true) : undefined}
+            />
+          )}
+          {panelTab && (
+            <HandoffDialog
+              open={handoffOpen}
+              onOpenChange={setHandoffOpen}
+              from={panelTab.profile}
+              session={sessions[panelTab.id]}
+              profiles={state.profiles}
+              onConfirm={(to, mode) => startHandoff(panelTab, to, mode)}
             />
           )}
         </div>

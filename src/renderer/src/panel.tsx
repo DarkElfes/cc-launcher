@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState, type ReactNode } from 'react'
 import {
   ArrowClockwiseIcon,
+  ArrowsLeftRightIcon,
   CaretDownIcon,
   CaretRightIcon,
   CheckCircleIcon,
@@ -337,6 +338,8 @@ export function SessionPanel(props: {
   tick: number
   openSessionIds: Set<string>
   onResume: (h: HistorySession) => void
+  /** Opens the "hand off to another account" dialog; undefined when not possible. */
+  onHandoff?: () => void
 }) {
   const { project, session: s } = props
   const [refreshKey, setRefreshKey] = useState(0)
@@ -345,11 +348,19 @@ export function SessionPanel(props: {
   const done = (s?.tasks ?? []).filter((t) => t.status === 'completed').length
   return (
     <aside className="flex w-80 shrink-0 flex-col overflow-y-auto border-l bg-sidebar/40">
-      <div className="flex items-center justify-between border-b px-3 py-2">
+      <div className="flex items-center justify-between gap-2 border-b px-3 py-2">
         <span className="text-xs font-semibold">Session</span>
-        <Button variant="ghost" size="icon-xs" title="Refresh git and history" onClick={() => setRefreshKey((k) => k + 1)}>
-          <ArrowClockwiseIcon />
-        </Button>
+        <div className="flex items-center gap-1">
+          {props.onHandoff && (
+            <Button variant="outline" size="xs" title="Continue this work with another account" onClick={props.onHandoff}>
+              <ArrowsLeftRightIcon data-icon="inline-start" />
+              Hand off
+            </Button>
+          )}
+          <Button variant="ghost" size="icon-xs" title="Refresh git and history" onClick={() => setRefreshKey((k) => k + 1)}>
+            <ArrowClockwiseIcon />
+          </Button>
+        </div>
       </div>
       <div className="border-b px-3 py-3">
         <SessionSection s={s} profile={props.profile} />

@@ -60,6 +60,8 @@ export interface SessionInfo {
   tabId: string
   sessionId?: string
   sessionName?: string
+  /** The conversation file (for continuing it in another account). */
+  transcriptPath?: string
   model?: string
   activity: Activity
   activityAt: number
@@ -177,6 +179,10 @@ export interface SpawnRequest {
   rows: number
   /** Resume this past session (claude --resume <id>) instead of starting a new one. */
   resumeSessionId?: string
+  /** Resume a conversation file, possibly another account's (claude --resume <path>). */
+  resumePath?: string
+  /** First message to send in a new session (claude "<prompt>"). */
+  initialPrompt?: string
 }
 
 export type Result<T = null> = { ok: true; value: T } | { ok: false; error: string }

@@ -77,6 +77,7 @@ export class SessionTracker {
     const name = e.hook_event_name
     this.update(tabId, (s) => {
       if (str(e.session_id)) s.sessionId = e.session_id as string
+      if (str(e.transcript_path) && !e.agent_id) s.transcriptPath = e.transcript_path as string
       switch (name) {
         case 'SessionStart': {
           const m = e.model

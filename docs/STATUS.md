@@ -77,6 +77,18 @@ _Last updated: 2026-11-07_
     44k/1M, cost $0.13, history entry. **Not yet tested live:** needs-you/permission prompts, Windows
     notifications, plan, tasks, subagents, connectors, Resume.
 
+- **0.6.0 (local build, not released)**: **Hand off** button in the session panel.
+  - Summary mode (default): sends `HANDOFF_PROMPT` to the current tab (Claude updates and commits
+    docs/STATUS.md). When that turn finishes, opens a new tab on the chosen account with
+    `CONTINUE_PROMPT` as its first message (`claude "<prompt>"`). If Claude is busy, it waits for it
+    first. "Open now" / "Cancel" on the toast.
+  - Full mode: the other account resumes the same conversation file (`claude --resume <path>`; the path
+    must be inside ~/.claude-profiles). Verified across profiles. It costs more: the whole conversation
+    is sent again.
+  - The target list picks the signed-in account with the most room left by default.
+  - Tested end-to-end darkness → tree in a scratch folder. Note: even this tiny test used ~3% of tree's
+    weekly limit (each new session sends ~45k tokens of system prompt/context).
+
 ## In progress
 - Nothing.
 
