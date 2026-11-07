@@ -17,6 +17,7 @@ import {
 import { Store } from './store'
 import { Terminals } from './terminals'
 import { Updater } from './updater'
+import { hasUpdateToken, setUpdateToken } from './updateToken'
 
 let win: BrowserWindow | null = null
 let store: Store
@@ -65,6 +66,7 @@ function getState(): AppState {
   return {
     appVersion: app.getVersion(),
     update: updater.status,
+    hasUpdateToken: hasUpdateToken(),
     projects: store.data.projects
       .map((p) => ({ ...p, exists: isDir(p.path) }))
       .sort((a, b) => (b.lastOpenedAt ?? b.addedAt) - (a.lastOpenedAt ?? a.addedAt)),
@@ -204,6 +206,15 @@ function registerIpc(): void {
   ipcMain.handle('update:check', async () => {
     await updater.check()
     return updater.status
+  })
+  ipcMain.handle('update:setToken', async (_e, token: string): Promise<Result> => {
+    try {
+      setUpdateToken(token)
+      void updater.check()
+      return ok(null)
+    } catch (e) {
+      return fail(e)
+    }
   })
   ipcMain.on('update:install', () => {
     terminals.killAll()

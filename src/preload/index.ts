@@ -23,6 +23,7 @@ const api: Api = {
   onTermData: (cb) => listen<TermDataEvent>('term:data', cb),
   onTermExit: (cb) => listen<TermExitEvent>('term:exit', cb),
   checkForUpdates: () => ipcRenderer.invoke('update:check'),
+  setUpdateToken: (token) => ipcRenderer.invoke('update:setToken', token),
   installUpdate: () => ipcRenderer.send('update:install'),
   onUpdateStatus: (cb) => listen<UpdateStatus>('update:status', cb)
 }

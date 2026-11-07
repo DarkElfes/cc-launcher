@@ -19,8 +19,9 @@ Plan: `docs/PLAN.md`. Current state: `docs/STATUS.md`. **Update STATUS.md at the
 | `pnpm release` | build and upload to the `publish` target in `electron-builder.yml` (for auto-update) |
 | `pnpm dlx shadcn@latest add <name>` | add a shadcn component to `src/renderer/src/components/ui/` |
 
-Releasing: bump `version` in package.json, then `pnpm release`. Installed apps check every 4 h,
-download in the background, and install on restart.
+Releasing: see `docs/RELEASING.md`. Updates come from releases of a private GitHub repo. The app
+reads them with a read-only token the user enters in Settings, stored encrypted by
+`src/main/updateToken.ts`. Never build a token into the app or commit one.
 
 ## Architecture
 

@@ -308,7 +308,7 @@ export function SettingsView(props: { state: AppState; onSaved: () => void }) {
             </Field>
           </FieldGroup>
         </form>
-        <UpdatesSection state={props.state} />
+        <UpdatesSection state={props.state} onSaved={props.onSaved} />
       </div>
     </div>
   )
@@ -318,6 +318,8 @@ function updateText(s: AppState['update']): string {
   switch (s.state) {
     case 'disabled':
       return 'Auto-update is off in this build (development build, or no update source configured).'
+    case 'needs-token':
+      return 'Add a GitHub token below so the app can read updates from your private repo.'
     case 'checking':
       return 'Checking for updates…'
     case 'none':
@@ -333,25 +335,66 @@ function updateText(s: AppState['update']): string {
   }
 }
 
-function UpdatesSection({ state }: { state: AppState }) {
+function UpdatesSection({ state, onSaved }: { state: AppState; onSaved: () => void }) {
   const u = state.update
+  const [token, setToken] = useState('')
+  const saveToken = async (value: string) => {
+    const r = await window.api.setUpdateToken(value)
+    if (!r.ok) return showError(r.error)
+    setToken('')
+    onSaved()
+  }
   return (
-    <Field>
-      <FieldLabel>Version {state.appVersion}</FieldLabel>
-      <FieldDescription>{updateText(u)}</FieldDescription>
-      <div className="flex gap-2">
-        {u.state === 'ready' ? (
-          <Button onClick={() => window.api.installUpdate()}>Restart and update</Button>
-        ) : (
-          <Button
-            variant="outline"
-            disabled={u.state === 'disabled' || u.state === 'checking' || u.state === 'downloading'}
-            onClick={() => void window.api.checkForUpdates()}
-          >
-            Check for updates
+    <FieldGroup>
+      <Field>
+        <FieldLabel>Version {state.appVersion}</FieldLabel>
+        <FieldDescription>{updateText(u)}</FieldDescription>
+        <div className="flex gap-2">
+          {u.state === 'ready' ? (
+            <Button onClick={() => window.api.installUpdate()}>Restart and update</Button>
+          ) : (
+            <Button
+              variant="outline"
+              disabled={u.state === 'disabled' || u.state === 'needs-token' || u.state === 'checking' || u.state === 'downloading'}
+              onClick={() => void window.api.checkForUpdates()}
+            >
+              Check for updates
+            </Button>
+          )}
+        </div>
+      </Field>
+      <Field>
+        <FieldLabel htmlFor="update-token">GitHub update token</FieldLabel>
+        <form
+          className="flex gap-2"
+          onSubmit={(e) => {
+            e.preventDefault()
+            void saveToken(token)
+          }}
+        >
+          <Input
+            id="update-token"
+            type="password"
+            autoComplete="off"
+            spellCheck={false}
+            value={token}
+            onChange={(e) => setToken(e.target.value)}
+            placeholder={state.hasUpdateToken ? '•••••••• saved' : 'github_pat_…'}
+          />
+          <Button type="submit" disabled={!token.trim()}>
+            Save
           </Button>
-        )}
-      </div>
-    </Field>
+          {state.hasUpdateToken && (
+            <Button type="button" variant="destructive" onClick={() => void saveToken('')}>
+              Remove
+            </Button>
+          )}
+        </form>
+        <FieldDescription>
+          Fine-grained token with read-only <b>Contents</b> access to the cc-launcher repo only. It's stored
+          encrypted for your Windows user and used only to download updates.
+        </FieldDescription>
+      </Field>
+    </FieldGroup>
   )
 }

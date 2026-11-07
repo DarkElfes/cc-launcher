@@ -24,12 +24,18 @@ _Last updated: 2026-11-07_
   then shows a "Restart" toast (it also installs on quit). Settings shows the version and has a
   "Check for updates" button.
 
+- **Private GitHub updates** (branch `feat/private-updates`): publish target is a private repo.
+  The app asks for a read-only fine-grained token in Settings, stores it encrypted (safeStorage/DPAPI),
+  and passes it straight to electron-updater (not via env vars). Checked in the packaged app:
+  "needs token" state and token format validation. See `docs/RELEASING.md`.
+
 ## In progress
 - Nothing.
 
 ## Next
-- Pick where updates are hosted (GitHub Releases is the plan) → fill in `publish` in
-  `electron-builder.yml` → `pnpm release`. Until then, installed builds show "auto-update is off".
+- One-time GitHub setup (owner's part): create the private repo, set `owner` in
+  `electron-builder.yml`, create the publish and update tokens, then do a first `pnpm release`
+  and confirm an installed copy updates (bump to 0.1.1).
 - M2: git info on project cards and in the project view; "New project" with templates; STATUS.md
   viewer/editor.
 

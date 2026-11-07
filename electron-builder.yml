@@ -22,10 +22,12 @@ nsis:
   createStartMenuShortcut: true
   shortcutName: cc-launcher
   deleteAppDataOnUninstall: false # keeps the project list; Claude profiles live in ~/.claude-profiles anyway
-# Where installed apps look for updates. Fill in your GitHub repo and run `pnpm release`
-# to upload a new version; installed copies pick it up automatically.
-# publish:
-#   provider: github
-#   owner: YOUR_GITHUB_USER
-#   repo: cc-launcher
-#   releaseType: release
+# Where installed apps look for updates: releases of the PRIVATE GitHub repo below.
+# - `pnpm release` uploads with the GH_TOKEN env var on your PC (Contents: read & write).
+# - Installed apps read it with a separate read-only token entered in Settings (never built in).
+publish:
+  provider: github
+  owner: GITHUB_USER # TODO: your GitHub username
+  repo: cc-launcher
+  private: true
+  releaseType: release
