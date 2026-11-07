@@ -213,16 +213,38 @@ export function Composer(props: {
     addImages(files.map((f) => window.api.pathForFile(f)).filter(Boolean))
   }
 
-  return (
-    <div
-      className="shrink-0 border-t bg-sidebar/60 p-2"
-      onDragOver={(e) => e.dataTransfer.types.includes('Files') && e.preventDefault()}
-      onDrop={onDrop}
-    >
+  const chatLayout = !!props.onSend
+
+  const textarea = (
+    <Textarea
+      ref={box}
+      value={text}
+      onChange={(e) => {
+        setText(e.target.value)
+        setHistIndex(-1)
+      }}
+      onKeyDown={onKeyDown}
+      onPaste={(e) => void onPaste(e)}
+      rows={1}
+      spellCheck
+      aria-label="Message Claude"
+      data-composer
+      className={cn(
+        'resize-none overflow-y-auto text-sm',
+        chatLayout
+          ? 'max-h-60 min-h-12 border-0 bg-transparent px-3 pt-3 focus-visible:ring-0 dark:bg-transparent'
+          : 'max-h-48 min-h-9 bg-background',
+        waiting && 'opacity-70'
+      )}
+    />
+  )
+
+  const notices = (
+    <>
       {waiting && (
         <p className="mb-1.5 flex items-center gap-1.5 text-[11px] text-amber-300">
           <WarningCircleIcon className="size-3.5" />
-          {props.onSend
+          {chatLayout
             ? 'Claude is waiting for your answer above (permission or a question).'
             : 'Claude is asking something in the terminal above (permission or a choice). Answer there first.'}
         </p>
@@ -234,52 +256,81 @@ export function Composer(props: {
           ))}
         </div>
       )}
-      <div className="flex items-end gap-2">
-        <Textarea
-          ref={box}
-          value={text}
-          onChange={(e) => {
-            setText(e.target.value)
-            setHistIndex(-1)
-          }}
-          onKeyDown={onKeyDown}
-          onPaste={(e) => void onPaste(e)}
-          rows={1}
-          spellCheck
-          aria-label="Message Claude"
-          data-composer
-          className={cn('max-h-48 min-h-9 resize-none overflow-y-auto bg-background text-sm', waiting && 'opacity-70')}
-        />
-        <ComposerHelp />
-        <Button
-          variant="ghost"
-          size="icon"
-          className={cn(!props.voiceOn && 'text-muted-foreground')}
-          title={
-            props.voiceOn
-              ? "Voice (Ctrl+Space): talk, then click again. Claude Code's dictation types into Claude's own prompt and sends it."
+    </>
+  )
+
+  const tools = (
+    <>
+      <ComposerHelp />
+      <Button
+        variant="ghost"
+        size={chatLayout ? 'icon-sm' : 'icon'}
+        className={cn(!props.voiceOn && 'text-muted-foreground')}
+        title={
+          props.voiceOn
+            ? "Voice (Ctrl+Space): talk, then click again. Claude Code's dictation types into Claude's own prompt and sends it."
+            : chatLayout
+              ? 'Voice dictation works in Terminal tabs'
               : 'Voice dictation is off. Click to turn it on.'
-          }
-          onClick={props.onDictate}
-        >
-          <MicrophoneIcon />
+        }
+        onClick={props.onDictate}
+      >
+        <MicrophoneIcon />
+      </Button>
+      <Button variant="ghost" size={chatLayout ? 'icon-sm' : 'icon'} title="Attach images" onClick={async () => addImages(await window.api.pickImages())}>
+        <ImageIcon />
+      </Button>
+    </>
+  )
+
+  const actions = (
+    <>
+      {props.busy && props.onStop && (
+        <Button size={chatLayout ? 'icon-sm' : 'icon'} variant="destructive" title="Stop Claude" onClick={props.onStop}>
+          <StopIcon weight="fill" />
         </Button>
-        <Button
-          variant="ghost"
-          size="icon"
-          title="Attach images"
-          onClick={async () => addImages(await window.api.pickImages())}
-        >
-          <ImageIcon />
-        </Button>
-        {props.busy && props.onStop && (
-          <Button size="icon" variant="destructive" title="Stop Claude" onClick={props.onStop}>
-            <StopIcon weight="fill" />
-          </Button>
-        )}
-        <Button size="icon" title={waiting ? 'Answer Claude first' : props.busy ? 'Send (queued after the current work)' : 'Send (Enter)'} disabled={!canSend} onClick={() => void send()}>
-          <PaperPlaneRightIcon />
-        </Button>
+      )}
+      <Button
+        size={chatLayout ? 'icon-sm' : 'icon'}
+        title={waiting ? 'Answer Claude first' : props.busy ? 'Send (queued after the current work)' : 'Send (Enter)'}
+        disabled={!canSend}
+        onClick={() => void send()}
+      >
+        <PaperPlaneRightIcon />
+      </Button>
+    </>
+  )
+
+  const dropProps = {
+    onDragOver: (e: DragEvent<HTMLDivElement>) => e.dataTransfer.types.includes('Files') && e.preventDefault(),
+    onDrop
+  }
+
+  // Chat: a card centered under the messages, same width as them (like the Claude app).
+  if (chatLayout)
+    return (
+      <div className="shrink-0 pt-1 pb-4" {...dropProps}>
+        {/* Same box as the message column in ChatView (max-w-3xl + px-4), so the edges line up. */}
+        <div className="mx-auto w-full max-w-3xl px-4">
+          {notices}
+          <div className="flex flex-col border bg-card/60 focus-within:border-ring">
+            {textarea}
+            <div className="flex items-center gap-0.5 px-1.5 pb-1.5">
+              {tools}
+              <div className="ml-auto flex items-center gap-1">{actions}</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    )
+
+  return (
+    <div className="shrink-0 border-t bg-sidebar/60 p-2" {...dropProps}>
+      {notices}
+      <div className="flex items-end gap-2">
+        {textarea}
+        {tools}
+        {actions}
       </div>
     </div>
   )

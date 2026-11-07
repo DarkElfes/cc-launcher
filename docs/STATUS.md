@@ -136,6 +136,10 @@ _Last updated: 2026-11-07_
   they're reopened with `--resume <sessionId>`, and chat tabs show their earlier messages. Resumed chat tabs
   know their session id right away. Tested: resume → restart → tab back with its messages.
 
+- **0.9.2 (local build, not released)**: **Inter** for the interface and chat (JetBrains Mono kept for code,
+  commands, diffs and paths). The chat message box is a card **centered with the message column** (same
+  `max-w-3xl px-4`), with text on top and buttons below; terminal tabs keep the full-width box.
+
 ## In progress
 - Nothing.
 

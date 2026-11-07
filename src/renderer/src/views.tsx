@@ -45,7 +45,7 @@ function PageHeader(props: { title: string; description?: ReactNode; actions?: R
       <div className="min-w-0">
         <h1 className="text-lg font-semibold tracking-tight">{props.title}</h1>
         {props.description && (
-          <p className={cn('mt-1 text-xs text-muted-foreground', props.mono && 'truncate')}>{props.description}</p>
+          <p className={cn('mt-1 text-xs text-muted-foreground', props.mono && 'truncate font-mono')}>{props.description}</p>
         )}
       </div>
       {props.actions && <div className="flex shrink-0 gap-2">{props.actions}</div>}
@@ -103,7 +103,7 @@ export function Dashboard(props: {
                     {p.name}
                     {running[p.id] ? <Badge className="ml-auto">{running[p.id]} running</Badge> : null}
                   </CardTitle>
-                  <CardDescription className="truncate">{p.path}</CardDescription>
+                  <CardDescription className="truncate font-mono text-[11px]">{p.path}</CardDescription>
                 </CardHeader>
                 <CardContent className="flex items-center gap-3 text-xs text-muted-foreground">
                   {p.exists ? (
