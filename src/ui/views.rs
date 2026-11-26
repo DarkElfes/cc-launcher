@@ -1,12 +1,14 @@
 //! Dashboard, project header, Accounts and Settings pages.
 
 use super::app::{LauncherApp, OpenRequest, TabKind, View};
+use super::icons::icon;
 use super::theme::{self, *};
 use crate::backend::types::*;
 use gpui_kit::component::input::Input;
 use gpui_kit::*;
 use gpui_kit::prelude::*;
 
+/// Claude Code's voice-dictation languages (the `language` setting also sets the reply language).
 const LANGUAGES: &[&str] = &[
     "ukrainian", "english", "russian", "polish", "german", "french", "spanish", "italian", "portuguese", "dutch", "czech", "danish",
     "norwegian", "swedish", "greek", "turkish", "hindi", "indonesian", "japanese", "korean",
@@ -15,6 +17,33 @@ const LANGUAGES: &[&str] = &[
 fn cap(s: &str) -> String {
     let mut c = s.chars();
     c.next().map(|f| f.to_uppercase().collect::<String>() + c.as_str()).unwrap_or_default()
+}
+
+/// One row of the language dropdown; `value` "" is the default (setting left unset).
+#[derive(Clone)]
+pub struct LangChoice {
+    value: &'static str,
+    title: SharedString,
+}
+
+impl gpui_kit::component::select::SelectItem for LangChoice {
+    type Value = &'static str;
+    fn value(&self) -> &&'static str {
+        &self.value
+    }
+    fn title(&self) -> SharedString {
+        self.title.clone()
+    }
+}
+
+pub type LangSelect = gpui_kit::component::select::SelectState<Vec<LangChoice>>;
+
+/// The language dropdown, with `current` selected.
+pub fn lang_select(current: Option<&str>, window: &mut Window, cx: &mut Context<LangSelect>) -> LangSelect {
+    let mut items = vec![LangChoice { value: "", title: "Default (not set: English for dictation)".into() }];
+    items.extend(LANGUAGES.iter().map(|l| LangChoice { value: l, title: cap(l).into() }));
+    let ix = current.and_then(|c| items.iter().position(|i| i.value == c)).unwrap_or(0);
+    gpui_kit::component::select::SelectState::new(items, Some(gpui_kit::component::IndexPath::new(ix)), window, cx)
 }
 
 fn page_header(title: &str, description: Option<String>) -> Div {
@@ -40,6 +69,13 @@ fn chip(id: impl Into<ElementId>, label: impl Into<SharedString>, on: bool) -> S
         .cursor_pointer()
         .hover(|d| d.text_color(foreground()))
         .child(label.into())
+}
+
+/// A choice chip with an outline icon before its label.
+fn chip_icon(id: impl Into<ElementId>, icon_name: &str, label: impl Into<SharedString>, on: bool) -> Stateful<Div> {
+    let color = if on { foreground() } else { muted_fg() };
+    let label: SharedString = label.into();
+    chip(id, "", on).flex().items_center().gap(px(6.)).child(icon(icon_name, color)).child(label)
 }
 
 impl LauncherApp {
@@ -92,7 +128,7 @@ impl LauncherApp {
                             .gap(px(8.))
                             .text_sm()
                             .font_weight(FontWeight::MEDIUM)
-                            .child("📁")
+                            .child(icon("folder-simple", muted_fg()))
                             .child(p.name.clone())
                             .when(n > 0, |d| d.child(div().ml_auto().child(badge(format!("{n} running"), sky())))),
                     )
@@ -135,9 +171,9 @@ impl LauncherApp {
                         .flex()
                         .border_1()
                         .border_color(border())
-                        .child(chip("mode-chat", "💬 Chat", mode == TabMode::Chat).border_0().on_click(cx.listener(|this, _, _, cx| this.set_tab_mode(TabMode::Chat, cx))))
+                        .child(chip_icon("mode-chat", "chat-circle", "Chat", mode == TabMode::Chat).border_0().on_click(cx.listener(|this, _, _, cx| this.set_tab_mode(TabMode::Chat, cx))))
                         .child(
-                            chip("mode-term", ">_ Terminal", mode == TabMode::Terminal)
+                            chip_icon("mode-term", "terminal-window", "Terminal", mode == TabMode::Terminal)
                                 .border_0()
                                 .on_click(cx.listener(|this, _, _, cx| this.set_tab_mode(TabMode::Terminal, cx))),
                         ),
@@ -149,7 +185,8 @@ impl LauncherApp {
                 let pid = id.clone();
                 let name = p.name.clone();
                 launch = launch.child(
-                    theme::button(SharedString::from(format!("launch-{}", p.name)), "▶")
+                    theme::btn_outline(SharedString::from(format!("launch-{}", p.name)))
+                        .child(icon("play", foreground()).size(px(12.)))
                         .when(last, |d| d.border_color(primary()))
                         .when(hot, |d| d.border_color(red_strong().opacity(0.6)))
                         .child(profile_tag(&p.name))
@@ -250,9 +287,14 @@ impl LauncherApp {
                                 },
                             )),
                         )
-                        .child(theme::button(SharedString::from(format!("folder-{name2}")), "📂").on_click(cx.listener(move |this, _, w, cx| this.open_folder(&dir, w, cx))))
                         .child(
-                            theme::button_danger(SharedString::from(format!("rm-{name3}")), "🗑")
+                            theme::btn_outline(SharedString::from(format!("folder-{name2}")))
+                                .child(icon("folder-open", foreground()))
+                                .on_click(cx.listener(move |this, _, w, cx| this.open_folder(&dir, w, cx))),
+                        )
+                        .child(
+                            theme::btn_danger(SharedString::from(format!("rm-{name3}")))
+                                .child(icon("trash", theme::red()))
                                 .on_click(cx.listener(move |this, _, w, cx| this.remove_profile(&name3, w, cx))),
                         ),
                 )
@@ -280,7 +322,7 @@ impl LauncherApp {
                                 Some("One profile per Claude account, each in its own folder under ~/.claude-profiles. The normal ~/.claude folder isn't used, so `claude` in other terminals can never switch an account here.".into()),
                             ))
                             .child(theme::disabled(
-                                theme::button("refresh", if refreshing { "Refreshing…" } else { "⟳ Refresh" })
+                                theme::button_icon("refresh", "arrow-clockwise", if refreshing { "Refreshing…" } else { "Refresh" })
                                     .on_click(cx.listener(|this, _, _, cx| this.refresh_accounts(None, cx))),
                                 refreshing,
                             )),
@@ -324,7 +366,6 @@ impl LauncherApp {
 
     pub fn render_settings(&mut self, cx: &mut Context<Self>) -> AnyElement {
         let claude_now = self.claude_path().unwrap_or("not found".into());
-        let lang = self.set_language.clone();
         let voice = self.set_voice;
         let field = |label: &str, control: AnyElement, desc: String| {
             div()
@@ -335,21 +376,9 @@ impl LauncherApp {
                 .child(control)
                 .child(div().text_size(px(11.)).text_color(muted_fg()).child(desc))
         };
-        let mut langs = div().flex().flex_wrap().gap(px(4.)).child(chip("lang-keep", "Don't change", lang.is_none()).on_click(cx.listener(|this, _, _, cx| {
-            this.set_language = None;
-            this.settings_saved = false;
-            cx.notify();
-        })));
-        for l in LANGUAGES {
-            let on = lang.as_deref() == Some(*l);
-            langs = langs.child(chip(SharedString::from(format!("lang-{l}")), cap(l), on).on_click(cx.listener(move |this, _, _, cx| {
-                this.set_language = Some(l.to_string());
-                this.settings_saved = false;
-                cx.notify();
-            })));
-        }
+        let langs = div().w(px(320.)).child(gpui_kit::component::select::Select::new(&self.lang_select).menu_max_h(px(320.)));
         let voice_opts: [(Option<VoiceMode>, &str); 4] = [
-            (None, "Don't change"),
+            (None, "Default (as each account has it; off unless turned on with /voice)"),
             (Some(VoiceMode::Tap), "On: tap (mic button or Ctrl+Space: start, again to send)"),
             (Some(VoiceMode::Hold), "On: hold Space while talking"),
             (Some(VoiceMode::Off), "Off"),
@@ -391,7 +420,7 @@ impl LauncherApp {
                     .child(field(
                         "Claude language (replies and voice)",
                         langs.into_any_element(),
-                        "Applied to every account. Claude replies in this language, and voice dictation recognizes it.".into(),
+                        "Applied to every account on Save. Claude replies in this language, and voice dictation recognizes it. Default removes the setting: Claude answers in the language you write in, and dictation expects English.".into(),
                     ))
                     .child(field(
                         "Voice dictation",

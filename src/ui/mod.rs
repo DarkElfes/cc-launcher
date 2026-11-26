@@ -363,7 +363,7 @@ impl LauncherApp {
                 .border_color(if selected { primary() } else { border() })
                 .when(enabled, |d| d.cursor_pointer())
                 .when(!enabled, |d| d.opacity(0.5))
-                .child(div().flex_none().child(if selected { "◉" } else { "○" }))
+                .child(radio(selected).mt(px(1.)))
                 .child(div().flex().flex_col().gap(px(2.)).child(div().text_xs().child(title.to_string())).child(muted(desc)))
         };
 
@@ -394,7 +394,7 @@ impl LauncherApp {
                                 }
                                 cx.notify();
                             }))
-                            .child(div().child(if sel { "◉" } else { "○" }))
+                            .child(radio(sel))
                             .child(
                                 div()
                                     .flex_1()
@@ -480,7 +480,7 @@ impl LauncherApp {
                                 .flex()
                                 .flex_col()
                                 .gap(px(4.))
-                                .child(div().text_base().font_weight(FontWeight::SEMIBOLD).child("⇄ Hand off to another account"))
+                                .child(div().flex().items_center().gap(px(8.)).text_base().font_weight(FontWeight::SEMIBOLD).child(icon("arrows-left-right", foreground()).size(px(16.))).child("Hand off to another account"))
                                 .child(muted("Continue this project's work with a different Claude account.")),
                         )
                         .child(body)
@@ -620,4 +620,9 @@ impl Render for LauncherApp {
             )
             .children(dialog)
     }
+}
+
+/// Radio mark for single-choice rows (outline icons, like the rest of the UI).
+fn radio(on: bool) -> Svg {
+    if on { icon("radio-button", foreground()) } else { icon("circle", muted_fg()) }
 }

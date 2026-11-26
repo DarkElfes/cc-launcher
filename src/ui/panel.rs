@@ -2,6 +2,7 @@
 //! connectors and history.
 
 use super::app::{LauncherApp, OpenRequest};
+use super::icons::icon;
 use super::theme::{self, *};
 use crate::backend::types::*;
 use gpui_kit::*;
@@ -62,7 +63,7 @@ impl LauncherApp {
                             .text_xs()
                             .font_weight(FontWeight::SEMIBOLD)
                             .cursor_pointer()
-                            .child(if open { "▾" } else { "▸" })
+                            .child(icon(if open { "caret-down" } else { "caret-right" }, muted_fg()).size(px(10.)))
                             .child(title)
                             .on_click(cx.listener(move |this, _, _, cx| {
                                 if !this.collapsed.remove(title) {
@@ -166,16 +167,16 @@ impl LauncherApp {
                 .gap(px(4.))
                 .children(tasks.iter().map(|t| {
                     let (glyph, color) = match t.status {
-                        TaskStatus::Completed => ("✓", emerald()),
-                        TaskStatus::InProgress => ("◌", sky()),
-                        TaskStatus::Pending => ("○", muted_fg()),
+                        TaskStatus::Completed => ("check", emerald()),
+                        TaskStatus::InProgress => ("circle-dashed", sky()),
+                        TaskStatus::Pending => ("circle", muted_fg()),
                     };
                     div()
                         .flex()
                         .items_start()
                         .gap(px(8.))
                         .text_xs()
-                        .child(div().flex_none().text_color(color).child(glyph))
+                        .child(icon(glyph, color).mt(px(1.)))
                         .child(div().when(t.status == TaskStatus::Completed, |d| d.text_color(muted_fg()).line_through()).child(t.subject.clone()))
                 }))
                 .into_any_element()
@@ -200,7 +201,7 @@ impl LauncherApp {
                         .items_center()
                         .gap(px(8.))
                         .text_xs()
-                        .child(if a.kind == "bash" { ">_" } else { "🤖" })
+                        .child(icon(if a.kind == "bash" { "terminal-window" } else { "robot" }, muted_fg()))
                         .child(div().flex_1().min_w_0().truncate().child(if a.kind == "bash" {
                             a.label.clone().unwrap_or("background command".into())
                         } else {
@@ -210,7 +211,7 @@ impl LauncherApp {
                 }))
                 .into_any_element()
         };
-        let right = (running > 0).then(|| div().text_size(px(10.)).text_color(sky()).child(format!("◌ {running}")).into_any_element());
+        let right = (running > 0).then(|| div().text_size(px(10.)).text_color(sky()).flex().items_center().gap(px(4.)).child(icon("circle-dashed", sky()).size(px(10.))).child(format!("{running}")).into_any_element());
         sections.push(self.section("Background", right, bg_body, cx));
 
         // --- outputs ---
@@ -266,7 +267,7 @@ impl LauncherApp {
                             .items_center()
                             .gap(px(8.))
                             .text_xs()
-                            .child("⎇")
+                            .child(icon("git-branch", muted_fg()))
                             .child(div().font_weight(FontWeight::MEDIUM).child(g.branch.clone().unwrap_or("—".into())))
                             .when(g.ahead > 0, |d| d.child(muted(format!("↑{}", g.ahead))))
                             .when(g.behind > 0, |d| d.child(muted(format!("↓{}", g.behind))))
@@ -448,7 +449,7 @@ impl LauncherApp {
                             .gap(px(4.))
                             .when(can_handoff, |d| {
                                 let from = panel_tab.as_ref().map(|t| t.id.clone()).unwrap_or_default();
-                                d.child(theme::button("handoff", "⇄ Hand off").h(px(22.)).on_click(cx.listener(move |this, _, _, cx| {
+                                d.child(theme::button_icon("handoff", "arrows-left-right", "Hand off").h(px(22.)).on_click(cx.listener(move |this, _, _, cx| {
                                     this.open_handoff_dialog(&from);
                                     cx.notify();
                                 })))

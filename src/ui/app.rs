@@ -156,6 +156,7 @@ pub struct LauncherApp {
     pub set_claude: Entity<InputState>,
     pub set_editor: Entity<InputState>,
     pub set_language: Option<String>,
+    pub lang_select: Entity<super::views::LangSelect>,
     pub set_voice: Option<VoiceMode>,
     pub settings_saved: bool,
     pub handoff_dialog: Option<HandoffDialog>,
@@ -197,9 +198,18 @@ impl LauncherApp {
             st.set_value(s.editor_command.clone().unwrap_or_default(), window, cx);
             st
         });
+        let lang_select = cx.new(|cx| super::views::lang_select(s.claude_language.as_deref(), window, cx));
+        cx.subscribe_in(&lang_select, window, |this: &mut Self, _, ev: &gpui_kit::component::select::SelectEvent<Vec<super::views::LangChoice>>, _, cx| {
+            let gpui_kit::component::select::SelectEvent::Confirm(v) = ev;
+            this.set_language = (*v).filter(|l| !l.is_empty()).map(|l| l.to_string());
+            this.settings_saved = false;
+            cx.notify();
+        })
+        .detach();
 
         let mut app = Self {
             set_language: s.claude_language.clone(),
+            lang_select,
             set_voice: s.voice_mode,
             store,
             live: HashMap::new(),
@@ -1049,6 +1059,11 @@ impl LauncherApp {
             self.voice_on_since = now_ms();
         }
         self.store.save();
+        if self.set_language.is_none() {
+            for n in list_profile_names() {
+                crate::backend::profile_settings::clear_language(&profile_dir(&n));
+            }
+        }
         self.apply_profile_settings(None);
         self.settings_saved = true;
         let _ = window;
@@ -1177,12 +1192,11 @@ impl LauncherApp {
     pub fn dictate(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let Some(tab) = self.active_tab().cloned() else { return };
         if tab.mode == TabMode::Chat {
-            return self.show_info(
-                "Voice dictation works in terminal tabs",
-                "Claude Code's dictation only exists in its terminal UI. Open this account as a Terminal tab to dictate.",
-                window,
-                cx,
-            );
+            // Claude Code's own dictation exists only in its terminal UI, so chat tabs use Windows
+            // voice typing: it types straight into the message box.
+            self.composer.update(cx, |c, cx| c.focus_input(window, cx));
+            window.defer(cx, |_, _| platform::start_voice_typing());
+            return;
         }
         if self.store.settings.voice_mode != Some(VoiceMode::Tap) {
             let lang = if self.store.settings.claude_language.is_some() { "" } else { " Also set Claude language, or dictation expects English." };

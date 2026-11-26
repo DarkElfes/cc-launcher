@@ -93,3 +93,25 @@ pub fn single_instance(events: async_channel::Sender<BackendEvent>) -> bool {
     });
     true
 }
+
+/// Opens Windows voice typing (Win+H) for the focused text field. Speech goes to Microsoft's
+/// online recognizer and types into the field; its language follows the Windows input language.
+pub fn start_voice_typing() {
+    #[cfg(windows)]
+    {
+        const VK_LWIN: u8 = 0x5B;
+        const VK_H: u8 = 0x48;
+        const KEYEVENTF_KEYUP: u32 = 0x0002;
+        #[link(name = "user32")]
+        unsafe extern "system" {
+            fn keybd_event(vk: u8, scan: u8, flags: u32, extra: usize);
+        }
+        // SAFETY: plain synthesized key presses (Win down, H down/up, Win up).
+        unsafe {
+            keybd_event(VK_LWIN, 0, 0, 0);
+            keybd_event(VK_H, 0, 0, 0);
+            keybd_event(VK_H, 0, KEYEVENTF_KEYUP, 0);
+            keybd_event(VK_LWIN, 0, KEYEVENTF_KEYUP, 0);
+        }
+    }
+}

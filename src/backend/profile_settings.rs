@@ -53,6 +53,17 @@ pub fn apply_voice_settings(dir: &Path, s: &Settings) {
     }
 }
 
+/// "Default" chosen in Settings: removes `language` so Claude Code uses its default (replies in the
+/// language you write in, dictation in English).
+pub fn clear_language(dir: &Path) {
+    let path = dir.join("settings.json");
+    if let Some(mut settings) = read_settings(&path) {
+        if settings.remove("language").is_some() {
+            write_json(&path, &Value::Object(settings));
+        }
+    }
+}
+
 fn ensure_dictate_key(dir: &Path) {
     let path = dir.join("keybindings.json");
     let Some(mut file) = read_settings(&path) else { return };

@@ -55,6 +55,20 @@ _Last updated: 2026-11-26_
     alignment, window placement after close → reopen, no claude processes left after closing.
     **Not checked by hand:** line breaks in a live reply, tab restore of a terminal tab, restore
     after an actual update.
+- **Settings, icons, chat dictation (2026-11-26, later):**
+  - Claude language is a dropdown (gpui-component Select). "Default" replaces "Don't change": on Save
+    it removes `language` from every account (Claude answers in the language you write in;
+    dictation expects English). Voice dictation's first option reads "Default (as each account has it)".
+  - All emoji/text glyphs in the UI replaced with Phosphor outline icons (dashboard folder, Chat /
+    Terminal toggle, launch play buttons, account folder/trash, Refresh, Hand off, panel carets, task
+    status, background agents, git branch, hand-off radios). Added `circle.svg`, `radio-button.svg`.
+  - Chat tabs: the mic button / Ctrl+Space focuses the message box and opens Windows voice typing
+    (Win+H). Claude Code's own dictation only exists in its terminal UI (it streams audio to
+    Anthropic with the claude.ai login, which the app must not use). **Not checked by hand** (needs
+    speaking): whether Windows voice typing types into the GPUI text box, and Ukrainian support.
+  - Memory (release, Task Manager "Memory" = private working set): ~60 MB in a normal window, ~80 MB
+    maximized at 2880×1800, ~105 MB with a chat tab maximized; the build before these changes measured
+    the same (60 / 95 MB). Debug builds are about the same plus a console window.
 - Build note: Windows Smart App Control blocks Rust build scripts (os error 4551); it must be off
   to build on a PC. Needs rustup (stable-msvc) + VS 2022 Build Tools (C++ workload).
 - Testing note: "cc-launcher" in the Start menu is still the old Electron 0.9.0 install; run the

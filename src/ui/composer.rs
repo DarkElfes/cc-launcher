@@ -64,7 +64,7 @@ const HELP: &[(&str, &str)] = &[
     ("Ctrl+↑ / Ctrl+↓", "Previous messages"),
     ("Ctrl+V", "Paste text, or a screenshot as an image"),
     ("+ / drag & drop", "Attach files (images are shown to Claude, other files by path)"),
-    ("Mic / Ctrl+Space", "Voice dictation (terminal tabs). Claude Code types into its own prompt."),
+    ("Mic / Ctrl+Space", "Voice dictation. Terminal tabs: Claude Code types into its own prompt. Chat tabs: Windows voice typing (Win+H) types into this box."),
     ("Esc", "Go to the terminal"),
     ("Terminal", "Answer Claude's questions and menus there. Right click copies/pastes."),
 ];
@@ -191,6 +191,10 @@ impl Composer {
         self.set_text("", window, cx);
         self.input.update(cx, |s, cx| s.focus(window, cx));
         cx.notify();
+    }
+
+    pub fn focus_input(&self, window: &mut Window, cx: &mut Context<Self>) {
+        self.input.update(cx, |s, cx| s.focus(window, cx));
     }
 
     pub fn add_files(&mut self, paths: Vec<String>, cx: &mut Context<Self>) {
