@@ -175,7 +175,9 @@ _Last updated: 2026-11-26_
     images in chat, subagents.
 
 ## In progress
-- Nothing.
+- Branch `gpui-rewrite`: hand-testing 0.10.0 (see the 0.10.0 section above for what's checked and
+  fixed). Left to check: Windows toasts, handoff, image paste / attach, sign-in. Then merge into main
+  and release. Test project used: `D:\Projects\Temp\cc-launcher-temp` (on the desktop PC).
 
 - **0.3.0**: the repo is public, so updates need no token. All token code is removed, and old saved
   tokens are deleted on startup. Repo and history were audited before going public: no secrets or
