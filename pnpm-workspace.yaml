@@ -1,3 +1,0 @@
-# electron-winstaller (Squirrel) is pulled in by electron-builder but unused: we build NSIS installers.
-allowBuilds:
-  electron-winstaller: false

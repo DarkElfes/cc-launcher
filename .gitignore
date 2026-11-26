@@ -1,6 +1,4 @@
-node_modules/
-out/
-dist/
+target/
 *.log
 
 # Never commit Claude credentials or profile folders, even by accident.

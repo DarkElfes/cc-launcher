@@ -1,8 +1,32 @@
 # Status
 
-_Last updated: 2026-11-07_
+_Last updated: 2026-11-26_
 
-## Done
+## 0.10.0: rewrite from Electron to Rust + GPUI (branch `gpui-rewrite`)
+- The whole app is now native Rust on GPUI (`gpui-kit` 0.11 / gpui-component). All Electron, React,
+  Vite, pnpm and electron-builder files are removed; see CLAUDE.md for the new layout.
+- Same data file (`%APPDATA%\cc-launcher\app.json`) and same profile folders, hooks, status-line
+  script and keybindings, so existing projects and accounts carry over unchanged.
+- Ported: projects, accounts (email/plan/limits), settings (language, voice), terminal tabs
+  (ConPTY + alacritty_terminal, own renderer: colors, bold/italic, selection, right-click copy/paste,
+  scrollback, bracketed paste, text input incl. Cyrillic), chat tabs (stream-json, Markdown via
+  gpui-component TextView, tool cards with diffs, permission / plan / question cards, permission
+  modes, stop/resume), message box (drafts per tab, Ctrl+↑/↓ history, screenshot paste, drag & drop,
+  image picker), session panel (session, plan, tasks, background, outputs, git changes, connectors,
+  history + resume), handoff to another account (summary via STATUS.md or full conversation),
+  Windows toasts with click-to-open, single instance, auto-update from GitHub releases (self-replace).
+- Distribution is one portable `cc-launcher.exe` (icon embedded); no installer any more.
+- Checked by hand on this PC: app starts with the old projects; project view shows accounts with
+  limits, git changes (Cyrillic file names fixed with core.quotepath=false) and history; chat tab
+  opens; terminal tab runs Claude Code 2.1.332 and renders it; typing Latin and Cyrillic works;
+  status-line data (model, context) reaches the panel; closing the app ends its claude processes.
+- **Not yet checked by hand:** sending a message in chat and in the terminal composer (hooks:
+  UserPromptSubmit/Stop/PermissionRequest), permission cards end-to-end, handoff, toasts, updater
+  (needs a release), sign-in flow, mic/dictation, image paste.
+- Note: SessionStart supports only command hooks, so a new tab shows "ready" once its status line
+  runs, and "working"/"finished" come from the other hooks.
+
+## Earlier (Electron, ≤ 0.9.0)
 - Tooling on this PC: Git 2.56, Node 26 LTS, pnpm 12, Claude Code 2.1.319, Zed.
 - Checked: `CLAUDE_CONFIG_DIR` is documented officially (code.claude.com, authentication →
   "Log in with multiple accounts"). It moves settings, credentials (`.credentials.json`)
@@ -139,14 +163,18 @@ _Last updated: 2026-11-07_
   credential files, and only the commit author email.
 
 ## Next
-- Owner: install 0.3.0 by hand once (0.2.0 expects a private repo). Then release 0.3.1 to confirm an
-  installed copy updates itself.
+- Test the unchecked items of 0.10.0 above with real messages, then merge `gpui-rewrite` into main.
+- Release 0.10.0 (`.\scripts\release.ps1`), install the exe by hand once (Electron builds can't
+  update to it), then release 0.10.1 to confirm self-update.
+- Maybe: an installer (Start menu shortcut) instead of the portable exe.
 - M2: git info on project cards and in the project view; "New project" with templates; STATUS.md
   viewer/editor.
 
 ## Known problems
-- No code-signing certificate, so Windows SmartScreen warns on first install ("More info → Run anyway").
+- No code-signing certificate, so Windows SmartScreen warns on first run ("More info → Run anyway").
   Auto-update still works without signing.
+- GPUI rewrite: emoji glyphs in a few buttons (mic) fall back to other symbols; IME composition
+  (marked text) in the terminal isn't shown while composing, only the committed text is sent.
 - Usage only updates while a session of that account runs (after its first reply). It can't be
   fetched on demand without using the login token, which we don't do. Not yet seen with a real account.
 - Usage needs workspace trust to be accepted in the folder (the status line is blank before that).
