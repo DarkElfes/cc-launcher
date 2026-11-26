@@ -44,6 +44,8 @@ pub struct ChatState {
     pub busy: bool,
     pub model: Option<String>,
     pub permission_mode: Option<String>,
+    /// Stop was clicked; the turn's `result` shows as "Stopped" instead of an error.
+    pub stop_requested: bool,
     current_msg: Option<String>,
     seq: u64,
 }
@@ -258,6 +260,10 @@ impl ChatState {
                 }
             }
             "result" => {
+                if std::mem::take(&mut self.stop_requested) {
+                    self.exited(true, Some(0), "");
+                    return;
+                }
                 let denials = e
                     .get("permission_denials")
                     .and_then(|d| d.as_array())
@@ -331,6 +337,7 @@ impl ChatState {
 
     pub fn exited(&mut self, stopped: bool, code: Option<i32>, stderr: &str) {
         self.busy = false;
+        self.stop_requested = false;
         self.end_streaming();
         self.expire_pending();
         if stopped {

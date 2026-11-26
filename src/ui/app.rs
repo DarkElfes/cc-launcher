@@ -4,7 +4,7 @@ use super::chat_store::{ChatState, Tone};
 use super::composer::{Composer, ComposerEvent};
 use super::terminal_view::TerminalView;
 use crate::backend::account_info::{refresh_profile, ProfileLive};
-use crate::backend::chat::{read_transcript_messages, ChatManager, ChatStartOptions};
+use crate::backend::chat::{read_transcript_messages, ChatManager, ChatStartOptions, StopKind};
 use crate::backend::history::project_dir_name;
 use crate::backend::hook_server::HookServer;
 use crate::backend::profile_settings::{apply_voice_settings, DICTATE_SEQUENCE};
@@ -500,6 +500,12 @@ impl LauncherApp {
             }
             BackendEvent::ChatEvent { tab, generation, event } => {
                 if self.chat.note_event(&tab, generation, &event) {
+                    // Follow the reply while the view is at (or near) the bottom.
+                    if let Some(h) = self.chat_scroll.get(&tab) {
+                        if -h.offset().y >= h.max_offset().y - px(48.) {
+                            h.scroll_to_bottom();
+                        }
+                    }
                     let before = self.tracker.get(&tab).map(|s| s.activity);
                     self.tracker.chat_event(&tab, &event);
                     self.chats.entry(tab.clone()).or_default().apply(&event);
@@ -828,13 +834,36 @@ impl LauncherApp {
     }
 
     pub fn chat_stop(&mut self, tab: &str, cx: &mut Context<Self>) {
-        if self.chat.stop(tab) {
-            self.tracker.chat_process_ended(tab);
-            if let Some(c) = self.chats.get_mut(tab) {
-                c.exited(true, Some(0), "");
+        match self.chat.stop(tab) {
+            StopKind::None => {}
+            StopKind::Killed => self.chat_stopped_by_kill(tab),
+            StopKind::Interrupted(generation) => {
+                if let Some(c) = self.chats.get_mut(tab) {
+                    c.stop_requested = true;
+                }
+                // If the turn hasn't ended a few seconds later, end the process instead.
+                let tab = tab.to_string();
+                cx.spawn(async move |this, cx| {
+                    cx.background_executor().timer(Duration::from_secs(5)).await;
+                    let _ = this.update(cx, |this, cx| {
+                        let still = this.chats.get(&tab).is_some_and(|c| c.stop_requested && c.busy);
+                        if still && this.chat.generation(&tab) == Some(generation) && this.chat.kill(&tab) {
+                            this.chat_stopped_by_kill(&tab);
+                            cx.notify();
+                        }
+                    });
+                })
+                .detach();
             }
         }
         cx.notify();
+    }
+
+    fn chat_stopped_by_kill(&mut self, tab: &str) {
+        self.tracker.chat_process_ended(tab);
+        if let Some(c) = self.chats.get_mut(tab) {
+            c.exited(true, Some(0), "");
+        }
     }
 
     fn really_close_tab(&mut self, tab: &str, window: &mut Window, cx: &mut Context<Self>) {

@@ -21,6 +21,9 @@ pub const SESSIONS_DIR: &str = "cc-launcher-sessions";
 const SCRIPT: &str = r#"# Written by cc-launcher. Saves plan usage (rate_limits) and per-session info (model, context,
 # cost) for the app, and prints a short status line.
 $ErrorActionPreference = 'SilentlyContinue'
+# Claude Code sends UTF-8; the console default would garble non-ASCII text (e.g. Cyrillic titles).
+[Console]::InputEncoding = [Text.Encoding]::UTF8
+[Console]::OutputEncoding = [Text.Encoding]::UTF8
 $j = [Console]::In.ReadToEnd() | ConvertFrom-Json
 $now = [DateTimeOffset]::UtcNow.ToUnixTimeSeconds()
 if ($j.rate_limits) {

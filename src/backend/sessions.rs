@@ -199,6 +199,10 @@ impl SessionTracker {
                 c.size = w;
                 c.used_percent = Some((c.tokens as f64 / w as f64 * 100.0).round());
             }
+            // An interrupted or failed turn gets no Stop hook, so end "working" here.
+            if e.get("is_error").and_then(|v| v.as_bool()) == Some(true) && matches!(s.activity, Activity::Working | Activity::NeedsYou) {
+                set_activity(s, Activity::Idle);
+            }
         }
     }
 

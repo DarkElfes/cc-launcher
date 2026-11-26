@@ -20,9 +20,28 @@ _Last updated: 2026-11-26_
   limits, git changes (Cyrillic file names fixed with core.quotepath=false) and history; chat tab
   opens; terminal tab runs Claude Code 2.1.332 and renders it; typing Latin and Cyrillic works;
   status-line data (model, context) reaches the panel; closing the app ends its claude processes.
-- **Not yet checked by hand:** sending a message in chat and in the terminal composer (hooks:
-  UserPromptSubmit/Stop/PermissionRequest), permission cards end-to-end, handoff, toasts, updater
-  (needs a release), sign-in flow, mic/dictation, image paste.
+- Checked by hand on 2026-11-26 (debug build, darkess, scratch project): chat send + Done footer and
+  panel stats; Write permission card → Allow → file written; Stop → "Stopped" → next message
+  continues with the partial answer remembered; AskUserQuestion card → answer reaches Claude; plan
+  card → Approve → mode back to Ask → Write card → file written; terminal tab: workspace trust,
+  message box send, UserPromptSubmit/Stop hooks, green "finished" dot on the project; closing the app
+  leaves no claude processes.
+- Fixed during that check:
+  - Stop now sends a stream-json `interrupt` control request (as the Agent SDK does) instead of
+    killing the process, so the partial answer stays in the session; it falls back to ending the
+    process after 5 s. No extra "Done 0.1 s" after resuming, and the panel leaves "working".
+  - Chat processes run with `--permission-prompt-tool stdio`; without it `claude -p` has no
+    AskUserQuestion / ExitPlanMode tools, so question and plan cards never appeared. The hook still
+    shows the card; the stdio request gets the same answer (first answer wins).
+  - The chat view follows a streaming reply while you're at the bottom.
+  - Status-line script reads stdin as UTF-8 (Cyrillic session titles were garbled).
+  - Resume / refresh buttons in the panel used glyphs that aren't icons (empty squares).
+- **Not yet checked by hand:** Windows toasts (couldn't see them in screenshots), handoff, updater
+  (needs a release), sign-in flow, mic/dictation, image paste / attach.
+- Minor, not fixed: single line breaks in replies render as spaces (Markdown soft breaks), so a
+  list of numbers "one per line" shows as one paragraph. Window size/maximized state isn't remembered.
+- Testing note: "cc-launcher" in the Start menu is still the old Electron 0.9.0 install; run the
+  Rust build with `cargo run` (or target\debug\cc-launcher.exe), not from the Start menu.
 - Note: SessionStart supports only command hooks, so a new tab shows "ready" once its status line
   runs, and "working"/"finished" come from the other hooks.
 
@@ -163,7 +182,8 @@ _Last updated: 2026-11-26_
   credential files, and only the commit author email.
 
 ## Next
-- Test the unchecked items of 0.10.0 above with real messages, then merge `gpui-rewrite` into main.
+- Check the remaining items of 0.10.0 (toasts, handoff, images, sign-in), then merge `gpui-rewrite`
+  into main.
 - Release 0.10.0 (`.\scripts\release.ps1`), install the exe by hand once (Electron builds can't
   update to it), then release 0.10.1 to confirm self-update.
 - Maybe: an installer (Start menu shortcut) instead of the portable exe.

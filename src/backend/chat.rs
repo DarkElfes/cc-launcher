@@ -9,8 +9,9 @@
 //! Permissions: Claude Code runs the PermissionRequest hook (our HTTP hook server) before a tool
 //! that needs approval. For chat tabs the request is held open until you click Allow/Deny.
 //!
-//! Stop: there's no documented stdin interrupt, so the process is ended; the next message resumes
-//! the same session with --resume <session id>.
+//! Stop: sends an `interrupt` control request on stdin, like the Agent SDK does. The turn ends with
+//! a `result` event and the partial answer stays in the session. If that fails, the process is
+//! ended and the next message resumes the session with --resume <session id>.
 
 use super::types::{js, ChatPermissionDecision, ChatPermissionRequest};
 use super::util::{hidden_command, kill_tree};
@@ -21,6 +22,15 @@ use std::collections::HashMap;
 use std::io::{BufRead, BufReader, Read, Write};
 use std::process::{Child, ChildStdin, Stdio};
 use std::sync::mpsc;
+
+pub enum StopKind {
+    /// Nothing was running.
+    None,
+    /// An interrupt was sent to the process with this generation; a `result` event will follow.
+    Interrupted(u64),
+    /// The process was ended.
+    Killed,
+}
 
 pub struct ChatStartOptions {
     pub claude: String,
@@ -36,6 +46,22 @@ struct ChatProc {
     opts: ChatStartOptions,
     session_id: Option<String>,
     pending: HashMap<String, (ChatPermissionRequest, mpsc::Sender<Value>)>,
+    /// Open `can_use_tool` control requests from stdout: (request id, tool name).
+    control: Vec<(String, String)>,
+}
+
+fn send_control_response(c: &mut ChatProc, response: Value) {
+    if let Some((_, stdin, _)) = c.child.as_mut() {
+        let _ = writeln!(stdin, "{}", json!({ "type": "control_response", "response": response })).and_then(|_| stdin.flush());
+    }
+}
+
+/// Answers the oldest open control request for this tool with the same decision as the hook.
+fn answer_control(c: &mut ChatProc, tool_name: &str, decision: &Value) {
+    if let Some(i) = c.control.iter().position(|(_, t)| t == tool_name) {
+        let (id, _) = c.control.remove(i);
+        send_control_response(c, json!({ "subtype": "success", "request_id": id, "response": decision }));
+    }
 }
 
 /// Keys of init/result events that are only diagnostics.
@@ -61,7 +87,7 @@ impl ChatManager {
 
     pub fn open(&mut self, tab: &str, opts: ChatStartOptions) {
         let session_id = opts.resume.clone();
-        self.chats.insert(tab.into(), ChatProc { child: None, opts, session_id, pending: HashMap::new() });
+        self.chats.insert(tab.into(), ChatProc { child: None, opts, session_id, pending: HashMap::new(), control: vec![] });
     }
 
     /// Remembers the session id from an event (so a restarted process resumes it).
@@ -72,6 +98,25 @@ impl ChatManager {
         }
         if let Some(id) = js::str(e, "session_id") {
             c.session_id = Some(id.into());
+        }
+        if js::str(e, "type") == Some("control_request") {
+            // Claude Code asks for the same permission here and through the PermissionRequest hook;
+            // the first answer wins. The hook shows the card, so this request just waits and gets
+            // the same answer when the card is answered (reply_permission).
+            let id = js::str(e, "request_id").unwrap_or("").to_string();
+            let req = e.get("request").cloned().unwrap_or(json!({}));
+            if js::str(&req, "subtype") == Some("can_use_tool") {
+                c.control.push((id, js::str(&req, "tool_name").unwrap_or("").to_string()));
+            } else {
+                let sub = js::str(&req, "subtype").unwrap_or("").to_string();
+                send_control_response(c, json!({ "subtype": "error", "request_id": id, "error": format!("Unsupported request: {sub}") }));
+            }
+            return false;
+        }
+        if js::str(e, "type") == Some("control_cancel_request") {
+            let id = js::str(e, "request_id").unwrap_or("");
+            c.control.retain(|(r, _)| r != id);
+            return false;
         }
         true
     }
@@ -94,7 +139,10 @@ impl ChatManager {
         if c.child.is_some() {
             return Ok(());
         }
-        let mut args = vec!["-p", "--input-format", "stream-json", "--output-format", "stream-json", "--verbose", "--include-partial-messages"]
+        // `--permission-prompt-tool stdio` (as the Agent SDK uses) makes AskUserQuestion and
+        // ExitPlanMode available in print mode. Our PermissionRequest hook still decides; requests
+        // it leaves open arrive as `control_request` events (see note_event).
+        let mut args = vec!["-p", "--input-format", "stream-json", "--output-format", "stream-json", "--verbose", "--include-partial-messages", "--permission-prompt-tool", "stdio"]
             .into_iter()
             .map(String::from)
             .collect::<Vec<_>>();
@@ -186,13 +234,35 @@ impl ChatManager {
         writeln!(stdin, "{msg}").and_then(|_| stdin.flush()).map_err(|e| format!("Could not send: {e}"))
     }
 
-    /// Ends the running turn by ending the process; the next message resumes the session.
-    pub fn stop(&mut self, tab: &str) -> bool {
+    /// Interrupts the running turn with a stream-json `interrupt` control request (what the Agent
+    /// SDK's interrupt() sends). The process stays alive and keeps the partial answer in the
+    /// session, and a `result` event ends the turn. Falls back to ending the process.
+    pub fn stop(&mut self, tab: &str) -> StopKind {
+        let Some(c) = self.chats.get_mut(tab) else { return StopKind::None };
+        let Some((_, stdin, generation)) = c.child.as_mut() else { return StopKind::None };
+        let generation = *generation;
+        let req = json!({ "type": "control_request", "request_id": uuid::Uuid::new_v4().to_string(), "request": { "subtype": "interrupt" } });
+        let sent = writeln!(stdin, "{req}").and_then(|_| stdin.flush()).is_ok();
+        deny_all(c, "Stopped by the user.", true);
+        if sent {
+            return StopKind::Interrupted(generation);
+        }
+        self.kill(tab);
+        StopKind::Killed
+    }
+
+    /// Ends the process (the next message resumes the session). Used when an interrupt didn't work.
+    pub fn kill(&mut self, tab: &str) -> bool {
         let Some(c) = self.chats.get_mut(tab) else { return false };
         let Some((child, _, _)) = c.child.take() else { return false };
         deny_pending(c, "Stopped by the user.");
         kill_tree(child.id());
         true
+    }
+
+    /// The generation of the running process, if any.
+    pub fn generation(&self, tab: &str) -> Option<u64> {
+        self.chats.get(tab)?.child.as_ref().map(|x| x.2)
     }
 
     /// Restart with another model (keeps the conversation).
@@ -247,6 +317,7 @@ impl ChatManager {
         let c = self.chats.get_mut(tab)?;
         let (req, tx) = c.pending.remove(request_id)?;
         let (name, decision) = decision_json(&req, d);
+        answer_control(c, &req.tool_name, &decision);
         let _ = tx.send(json!({ "hookSpecificOutput": { "hookEventName": "PermissionRequest", "decision": decision } }));
         Some(name)
     }
@@ -272,9 +343,19 @@ fn decision_json(req: &ChatPermissionRequest, d: ChatPermissionDecision) -> (&'s
 }
 
 fn deny_pending(c: &mut ChatProc, message: &str) {
-    for (_, (req, tx)) in c.pending.drain() {
-        let (_, decision) = decision_json(&req, ChatPermissionDecision::Deny { message: Some(message.into()), interrupt: false });
+    deny_all(c, message, false);
+}
+
+/// Denies every open permission request (hook and control requests).
+fn deny_all(c: &mut ChatProc, message: &str, interrupt: bool) {
+    let pending: Vec<_> = c.pending.drain().collect();
+    for (_, (req, tx)) in pending {
+        let (_, decision) = decision_json(&req, ChatPermissionDecision::Deny { message: Some(message.into()), interrupt });
         let _ = tx.send(json!({ "hookSpecificOutput": { "hookEventName": "PermissionRequest", "decision": decision } }));
+    }
+    let deny = json!({ "behavior": "deny", "message": message, "interrupt": interrupt });
+    for (id, _) in std::mem::take(&mut c.control) {
+        send_control_response(c, json!({ "subtype": "success", "request_id": id, "response": deny }));
     }
 }
 

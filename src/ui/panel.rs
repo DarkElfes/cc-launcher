@@ -400,7 +400,7 @@ impl LauncherApp {
                     .child(if is_open {
                         muted("open").into_any_element()
                     } else {
-                        theme::icon_button(("resume", i), "▶")
+                        theme::icon_button(("resume", i), "play")
                             .border_1()
                             .border_color(border())
                             .on_click(cx.listener(move |this, _, w, cx| {
@@ -453,7 +453,7 @@ impl LauncherApp {
                                     cx.notify();
                                 })))
                             })
-                            .child(theme::icon_button("panel-refresh", "⟳").on_click(cx.listener(move |this, _, _, cx| {
+                            .child(theme::icon_button("panel-refresh", "arrow-clockwise").on_click(cx.listener(move |this, _, _, cx| {
                                 this.load_git(&pid2, cx);
                                 this.load_history(&pid2, cx);
                                 if let Some(p) = this.active.get(&pid2).and_then(|id| this.tabs.iter().find(|t| &t.id == id)).map(|t| t.profile.clone()) {
