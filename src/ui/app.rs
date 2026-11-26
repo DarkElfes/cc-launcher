@@ -236,6 +236,15 @@ impl LauncherApp {
         app.apply_profile_settings(None);
         app.reload_profiles();
 
+        app.remember_window(window);
+        cx.observe_window_bounds(window, |this, window, _| this.remember_window(window)).detach();
+
+        // Reopen the tabs that were open last time (each continues its conversation).
+        cx.spawn_in(window, async move |this, cx| {
+            let _ = this.update_in(cx, |this, window, cx| this.restore_open_tabs(window, cx));
+        })
+        .detach();
+
         // Backend events → state.
         cx.spawn_in(window, async move |this, cx| {
             while let Ok(ev) = events_rx.recv().await {
@@ -257,6 +266,7 @@ impl LauncherApp {
                         if this.tracker.poll_status() {
                             cx.notify();
                         }
+                        this.save_open_tabs();
                         if n % 7 == 0 {
                             this.reload_profiles();
                             if let View::Project(id) = this.view.clone() {
@@ -782,6 +792,15 @@ impl LauncherApp {
             { let fh = view.read(cx).focus_handle(); window.focus(&fh, cx); }
             self.terms.insert(tab_id.clone(), view);
         }
+        // A resumed tab knows its session right away (remembered even before its first message).
+        let known_id = req
+            .resume_path
+            .as_deref()
+            .and_then(|p| std::path::Path::new(p).file_stem().map(|s| s.to_string_lossy().to_string()))
+            .or(resume_id.clone());
+        if let Some(id) = known_id {
+            self.tracker.set_session_id(&tab_id, &id);
+        }
         if let Some(pid) = &req.project_id {
             self.touch_project(pid, &req.profile);
         }
@@ -1063,6 +1082,7 @@ impl LauncherApp {
     }
 
     pub fn install_update(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.save_open_tabs(); // before the new copy starts and reads app.json
         match updater::install() {
             Ok(()) => {
                 self.shutdown(cx);
@@ -1072,7 +1092,80 @@ impl LauncherApp {
         }
     }
 
+    /// Remembers which Claude tabs are open (once each has a session id), so a restart or update
+    /// brings them back. Writes the file only when the list changed.
+    pub fn save_open_tabs(&mut self) {
+        let active_project = match &self.view {
+            View::Project(id) => Some(id.as_str()),
+            _ => None,
+        };
+        let list: Vec<SavedTab> = self
+            .tabs
+            .iter()
+            .filter(|t| t.kind == TabKind::Project && (t.mode == TabMode::Chat || t.exit_code.is_none()))
+            .filter_map(|t| {
+                let project_id = t.project_id.clone()?;
+                let session_id = self.tracker.get(&t.id)?.session_id.clone()?;
+                let active = active_project == Some(project_id.as_str()) && self.active.get(&project_id) == Some(&t.id);
+                Some(SavedTab { project_id, profile: t.profile.clone(), mode: t.mode, session_id, active })
+            })
+            .take(30)
+            .collect();
+        if list != self.store.open_tabs {
+            self.store.open_tabs = list;
+            self.store.save();
+        }
+    }
+
+    /// Reopens the tabs saved by `save_open_tabs` with `--resume`; chat tabs show their earlier messages.
+    fn restore_open_tabs(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let saved: Vec<SavedTab> = self
+            .store
+            .open_tabs
+            .iter()
+            .filter(|t| self.project(&t.project_id).is_some_and(|p| is_dir(&p.path)))
+            .cloned()
+            .collect();
+        // Show the tab that was active, else the last one reopened.
+        let mut chosen: Option<(String, String)> = None;
+        let mut chosen_was_active = false;
+        for t in &saved {
+            let mut req = OpenRequest::project(&t.project_id, &t.profile);
+            req.resume_session_id = Some(t.session_id.clone());
+            req.mode = Some(t.mode);
+            if self.try_open_tab(req, window, cx).is_err() {
+                continue; // e.g. the account was removed; the tab is dropped on the next save
+            }
+            let Some(id) = self.tabs.last().map(|x| x.id.clone()) else { continue };
+            if t.active || !chosen_was_active {
+                chosen = Some((t.project_id.clone(), id));
+                chosen_was_active = t.active;
+            }
+        }
+        if let Some((pid, tab)) = chosen {
+            self.set_view(View::Project(pid), window, cx);
+            self.select_tab(&tab, window, cx);
+        }
+    }
+
+    /// Keeps the window placement in memory; written to app.json on shutdown.
+    fn remember_window(&mut self, window: &Window) {
+        let (b, maximized) = match window.window_bounds() {
+            WindowBounds::Windowed(b) => (b, false),
+            WindowBounds::Maximized(b) => (b, true),
+            WindowBounds::Fullscreen(_) => return,
+        };
+        // While closing or minimized, Windows reports a tiny or off-screen rectangle; keep the last real one.
+        let (x, y, w, h) = (f32::from(b.origin.x), f32::from(b.origin.y), f32::from(b.size.width), f32::from(b.size.height));
+        if w < 400. || h < 300. || x < -10000. || y < -10000. {
+            return;
+        }
+        self.store.settings.window = Some(WindowPlacement { x, y, width: w, height: h, maximized });
+    }
+
     pub fn shutdown(&mut self, cx: &mut Context<Self>) {
+        self.save_open_tabs();
+        self.store.save(); // window placement
         self.chat.close_all();
         for v in self.terms.values() {
             v.read(cx).kill();

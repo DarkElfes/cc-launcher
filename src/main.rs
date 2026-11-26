@@ -24,10 +24,13 @@ fn main() {
     gpui_kit::application().with_assets(ui::icons::AppAssets).run(move |cx| {
         gpui_kit::init(cx);
         gpui_kit::component::Theme::change(gpui_kit::component::ThemeMode::Dark, None, cx);
+        ui::theme::load_fonts(cx);
+        ui::theme::apply_component_theme(cx);
 
-        let bounds = Bounds::centered(None, size(px(1320.), px(840.)), cx);
+        let window_bounds = saved_window_bounds(cx)
+            .unwrap_or_else(|| WindowBounds::Windowed(Bounds::centered(None, size(px(1320.), px(840.)), cx)));
         let options = WindowOptions {
-            window_bounds: Some(WindowBounds::Windowed(bounds)),
+            window_bounds: Some(window_bounds),
             window_min_size: Some(size(px(900.), px(560.))),
             titlebar: Some(TitlebarOptions { title: Some("cc-launcher".into()), appears_transparent: true, traffic_light_position: None }),
             app_id: Some("dev.cclauncher.app".into()),
@@ -47,4 +50,19 @@ fn main() {
         .detach();
         cx.activate(true);
     });
+}
+
+/// The window placement saved last time, if it is big enough and still on a connected display.
+fn saved_window_bounds(cx: &App) -> Option<WindowBounds> {
+    let w = backend::store::Store::load().settings.window?;
+    if w.width < 900. || w.height < 560. {
+        return None;
+    }
+    let b = Bounds::new(point(px(w.x), px(w.y)), size(px(w.width), px(w.height)));
+    // At least the top-left corner area (where the title bar is) must be visible on some display.
+    let grab = Bounds::new(b.origin, size(px(120.), px(40.)));
+    if !cx.displays().iter().any(|d| d.bounds().intersects(&grab)) {
+        return None;
+    }
+    Some(if w.maximized { WindowBounds::Maximized(b) } else { WindowBounds::Windowed(b) })
 }

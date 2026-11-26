@@ -10,19 +10,19 @@ pub fn c(hex: u32) -> Hsla {
     rgb(hex).into()
 }
 
-// shadcn neutral (dark). Text is a little softer than pure white, as in the web build.
-pub fn background() -> Hsla { c(0x0a0a0a) }
-pub fn foreground() -> Hsla { c(0xe5e5e5) }
-pub fn muted_fg() -> Hsla { c(0x949494) }
-pub fn border() -> Hsla { hsla(0., 0., 1., 0.10) }
-pub fn input_border() -> Hsla { hsla(0., 0., 1., 0.15) }
-pub fn input_bg() -> Hsla { hsla(0., 0., 1., 0.045) }
-pub fn sidebar() -> Hsla { c(0x171717) }
-pub fn card() -> Hsla { c(0x171717) }
-pub fn secondary() -> Hsla { c(0x262626) }
-pub fn hover() -> Hsla { hsla(0., 0., 1., 0.07) }
-pub fn primary() -> Hsla { c(0xe5e5e5) }
-pub fn primary_fg() -> Hsla { c(0x171717) }
+// Neutral dark grey (not pure black) with soft grey text (not pure white), so text doesn't glare.
+pub fn background() -> Hsla { c(0x1c1c1c) }
+pub fn foreground() -> Hsla { c(0xd4d4d4) }
+pub fn muted_fg() -> Hsla { c(0x8f8f8f) }
+pub fn border() -> Hsla { hsla(0., 0., 1., 0.09) }
+pub fn input_border() -> Hsla { hsla(0., 0., 1., 0.14) }
+pub fn input_bg() -> Hsla { hsla(0., 0., 1., 0.04) }
+pub fn sidebar() -> Hsla { c(0x161616) }
+pub fn card() -> Hsla { c(0x232323) }
+pub fn secondary() -> Hsla { c(0x2b2b2b) }
+pub fn hover() -> Hsla { hsla(0., 0., 1., 0.06) }
+pub fn primary() -> Hsla { c(0xd4d4d4) }
+pub fn primary_fg() -> Hsla { c(0x1c1c1c) }
 pub fn sky() -> Hsla { c(0x38bdf8) }
 pub fn amber() -> Hsla { c(0xfbbf24) }
 pub fn emerald() -> Hsla { c(0x34d399) }
@@ -30,7 +30,50 @@ pub fn red() -> Hsla { c(0xf87171) }
 pub fn red_strong() -> Hsla { c(0xef4444) }
 
 pub const MONO: &str = "Cascadia Mono";
-pub const UI_FONT: &str = "Segoe UI";
+/// Inter, embedded in the exe (assets/fonts, SIL OFL) and registered by `load_fonts`.
+pub const UI_FONT: &str = "Inter";
+/// Width of the chat message column; the chat message box lines up with it.
+pub const CHAT_COLUMN: f32 = 820.;
+
+#[derive(rust_embed::RustEmbed)]
+#[folder = "assets/fonts"]
+#[include = "*.ttf"]
+struct Fonts;
+
+/// Gives gpui-component's own widgets (inputs, Markdown, menus, notifications) our fonts and
+/// colors, so they match the rest of the app instead of its default black/white theme.
+pub fn apply_component_theme(cx: &mut App) {
+    let t = gpui_kit::component::Theme::global_mut(cx);
+    t.font_family = UI_FONT.into();
+    t.mono_font_family = MONO.into();
+    let k = &mut t.colors;
+    k.background = background();
+    k.foreground = foreground();
+    k.border = border();
+    k.input = input_border();
+    k.muted = secondary();
+    k.muted_foreground = muted_fg();
+    k.popover = card();
+    k.popover_foreground = foreground();
+    k.secondary = secondary();
+    k.secondary_foreground = foreground();
+    k.primary = primary();
+    k.primary_foreground = primary_fg();
+    k.accent = secondary();
+    k.sidebar = sidebar();
+    k.sidebar_foreground = foreground();
+    k.title_bar = sidebar();
+    k.list = background();
+    k.table = background();
+}
+
+/// Registers the embedded Inter faces with the text system.
+pub fn load_fonts(cx: &mut App) {
+    let fonts: Vec<std::borrow::Cow<'static, [u8]>> = Fonts::iter().filter_map(|f| Fonts::get(&f).map(|e| e.data)).collect();
+    if let Err(e) = cx.text_system().add_fonts(fonts) {
+        eprintln!("could not load Inter: {e}");
+    }
+}
 
 /// Stable color per profile name so each account is easy to recognise.
 pub fn profile_color(name: &str) -> Hsla {

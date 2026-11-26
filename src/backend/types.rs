@@ -24,6 +24,19 @@ impl Project {
     }
 }
 
+/// A Claude tab to reopen after the app restarts (its conversation continues via --resume).
+/// Same shape as the Electron 0.9.1 `openTabs` entries.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SavedTab {
+    pub project_id: String,
+    pub profile: String,
+    pub mode: TabMode,
+    pub session_id: String,
+    #[serde(default)]
+    pub active: bool,
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum VoiceMode {
@@ -69,6 +82,20 @@ pub struct Settings {
     /// Session side panel visible (was localStorage in the Electron build).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub panel_open: Option<bool>,
+    /// Window position and size when the app last closed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub window: Option<WindowPlacement>,
+}
+
+/// Window position/size in logical pixels; `maximized` keeps the size to restore to.
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+pub struct WindowPlacement {
+    pub x: f32,
+    pub y: f32,
+    pub width: f32,
+    pub height: f32,
+    #[serde(default)]
+    pub maximized: bool,
 }
 
 #[derive(Clone, Debug, Default)]

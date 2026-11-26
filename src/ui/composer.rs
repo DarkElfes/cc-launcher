@@ -400,37 +400,22 @@ impl Render for Composer {
                 .on_click(cx.listener(|this, _, window, cx| this.send(window, cx)))
         };
 
-        div()
-            .flex_none()
+        let is_chat = self.is_chat;
+        let help_button = theme::icon_button("help", "question").on_click(cx.listener(|this, _, _, cx| {
+            this.show_help = !this.show_help;
+            cx.notify();
+        }));
+        // Chat tabs: a card centered with the message column (same width and padding as
+        // chat_view's column); terminal tabs keep the full-width box with help beside it.
+        let column = div()
+            .w_full()
             .flex()
             .flex_col()
             .gap(px(6.))
-            .px(px(12.))
-            .pt(px(4.))
-            .pb(px(12.))
-            .on_drop(cx.listener(|this, paths: &ExternalPaths, _, cx| {
-                this.add_files(paths.paths().iter().map(|p| p.to_string_lossy().to_string()).collect(), cx);
-            }))
-            .capture_key_down(cx.listener(|this, ev: &KeyDownEvent, window, cx| {
-                let k = &ev.keystroke;
-                if k.modifiers.control && k.key == "v" {
-                    // A screenshot in the clipboard becomes an attachment; text pastes normally.
-                    if let Some(path) = platform::save_clipboard_image() {
-                        this.add_files(vec![path], cx);
-                        cx.stop_propagation();
-                    }
-                } else if k.key == "escape" {
-                    if this.menu.take().is_some() {
-                        cx.notify();
-                    } else {
-                        cx.emit(ComposerEvent::FocusTerminal);
-                    }
-                    cx.stop_propagation();
-                } else if k.modifiers.control && (k.key == "up" || k.key == "down") {
-                    this.walk_history(k.key == "up", window, cx);
-                    cx.stop_propagation();
-                }
-            }))
+            .when(is_chat, |d| d.max_w(px(theme::CHAT_COLUMN)).px(px(16.)))
+            .when(!is_chat, |d| d.px(px(12.)));
+
+        let column = column
             .when(self.waiting, |d| {
                 d.child(
                     div()
@@ -500,7 +485,7 @@ impl Render for Composer {
                                             .on_click(cx.listener(|_, _, _, cx| cx.emit(ComposerEvent::Dictate))),
                                     )
                                     .child(div().flex_1())
-                                    .when(self.is_chat, |d| {
+                                    .when(is_chat, |d| {
                                         d.child(
                                             ctl("mode")
                                                 .child(icon("shield-warning", muted_fg()))
@@ -515,20 +500,50 @@ impl Render for Composer {
                                             .child(icon("caret-down", muted_fg()).size(px(10.)))
                                             .on_click(cx.listener(|this, _, _, cx| this.toggle_menu(Menu::Model, cx))),
                                     )
+                                    .when(is_chat, |d| {
+                                        d.child(ctl("help-inline").child(icon("question", muted_fg())).on_click(cx.listener(|this, _, _, cx| {
+                                            this.show_help = !this.show_help;
+                                            cx.notify();
+                                        })))
+                                    })
                                     .child(div().w(px(4.)))
                                     .child(send_or_stop),
                             )
                             .children(menu),
                     )
-                    .child(
-                        theme::icon_button("help", "question")
-                            .size(px(28.))
-                            .mb(px(6.))
-                            .on_click(cx.listener(|this, _, _, cx| {
-                                this.show_help = !this.show_help;
-                                cx.notify();
-                            })),
-                    ),
-            )
+                    .when(!is_chat, |d| d.child(help_button.size(px(28.)).mb(px(6.)))),
+            );
+
+        div()
+            .flex_none()
+            .flex()
+            .flex_col()
+            .items_center()
+            .pt(px(4.))
+            .pb(px(12.))
+            .on_drop(cx.listener(|this, paths: &ExternalPaths, _, cx| {
+                this.add_files(paths.paths().iter().map(|p| p.to_string_lossy().to_string()).collect(), cx);
+            }))
+            .capture_key_down(cx.listener(|this, ev: &KeyDownEvent, window, cx| {
+                let k = &ev.keystroke;
+                if k.modifiers.control && k.key == "v" {
+                    // A screenshot in the clipboard becomes an attachment; text pastes normally.
+                    if let Some(path) = platform::save_clipboard_image() {
+                        this.add_files(vec![path], cx);
+                        cx.stop_propagation();
+                    }
+                } else if k.key == "escape" {
+                    if this.menu.take().is_some() {
+                        cx.notify();
+                    } else {
+                        cx.emit(ComposerEvent::FocusTerminal);
+                    }
+                    cx.stop_propagation();
+                } else if k.modifiers.control && (k.key == "up" || k.key == "down") {
+                    this.walk_history(k.key == "up", window, cx);
+                    cx.stop_propagation();
+                }
+            }))
+            .child(column)
     }
 }

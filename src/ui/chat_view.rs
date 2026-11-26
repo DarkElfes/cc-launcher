@@ -99,7 +99,40 @@ fn tool_body(name: &str, input: &Value, result: Option<(&str, bool)>) -> Div {
 }
 
 fn markdown(id: impl Into<ElementId>, text: &str) -> impl IntoElement {
-    div().text_sm().child(TextView::markdown(id, text.to_string()).selectable(true))
+    div().text_sm().child(TextView::markdown(id, keep_line_breaks(text)).selectable(true))
+}
+
+/// Claude means a single line break as a line break (as Claude Code shows it), but Markdown joins
+/// such lines into one paragraph. Turns them into hard breaks, outside code fences and tables.
+fn keep_line_breaks(text: &str) -> String {
+    let lines: Vec<&str> = text.split('\n').collect();
+    let mut out = String::with_capacity(text.len() + lines.len() * 2);
+    let mut in_fence = false;
+    for (i, line) in lines.iter().enumerate() {
+        let t = line.trim_start();
+        let fence = t.starts_with("```") || t.starts_with("~~~");
+        if fence {
+            in_fence = !in_fence;
+        }
+        out.push_str(line);
+        if i + 1 == lines.len() {
+            break;
+        }
+        let next = lines[i + 1].trim_start();
+        let soft = !in_fence
+            && !fence
+            && !t.is_empty()
+            && !next.is_empty()
+            && !t.starts_with('|')
+            && !t.starts_with('#')
+            && !line.ends_with("  ")
+            && !line.ends_with('\\');
+        if soft {
+            out.push_str("  ");
+        }
+        out.push('\n');
+    }
+    out
 }
 
 
@@ -158,7 +191,7 @@ impl LauncherApp {
                     .min_h_0()
                     .overflow_y_scroll()
                     .track_scroll(&scroll)
-                    .child(div().flex().justify_center().child(div().w_full().max_w(px(820.)).flex().flex_col().gap(px(12.)).px(px(16.)).py(px(16.)).children(body))),
+                    .child(div().flex().justify_center().child(div().w_full().max_w(px(theme::CHAT_COLUMN)).flex().flex_col().gap(px(12.)).px(px(16.)).py(px(16.)).children(body))),
             )
             .into_any_element()
     }

@@ -38,8 +38,25 @@ _Last updated: 2026-11-26_
   - Resume / refresh buttons in the panel used glyphs that aren't icons (empty squares).
 - **Not yet checked by hand:** Windows toasts (couldn't see them in screenshots), handoff, updater
   (needs a release), sign-in flow, mic/dictation, image paste / attach.
-- Minor, not fixed: single line breaks in replies render as spaces (Markdown soft breaks), so a
-  list of numbers "one per line" shows as one paragraph. Window size/maximized state isn't remembered.
+- **Ported from Electron 0.9.1–0.9.2 + look (2026-11-26, second PC):**
+  - Open tabs come back after a restart or update: `openTabs` in app.json (same shape as Electron
+    0.9.1), saved every 3 s when changed, on close and before an update; reopened with `--resume`,
+    chat tabs with their earlier messages, the active tab selected. Bad entries are skipped, not fatal.
+  - Inter (static TTFs in `assets/fonts`, SIL OFL, embedded) for the UI, chat and Markdown;
+    Cascadia Mono for code. Claude's own app uses Anthropic Sans, which can't be redistributed.
+  - Chat message box is centered with the message column (`theme::CHAT_COLUMN` = 820 px, same
+    padding); help "?" moves into its control row. Terminal tabs keep the full-width box.
+  - Softer palette: background #1c1c1c instead of near-black, text #d4d4d4 instead of near-white;
+    gpui-component widgets (inputs, Markdown, menus) get the same colors and fonts
+    (`theme::apply_component_theme`). Colored cards (permission/question/plan) unchanged for now.
+  - Single line breaks in replies are kept (hard breaks outside code fences and tables).
+  - Window position/size/maximized is remembered (`settings.window`); ignored if off-screen or tiny.
+  - Checked by hand: tab restore (chat tab + history + project view), Inter and colors, message box
+    alignment, window placement after close → reopen, no claude processes left after closing.
+    **Not checked by hand:** line breaks in a live reply, tab restore of a terminal tab, restore
+    after an actual update.
+- Build note: Windows Smart App Control blocks Rust build scripts (os error 4551); it must be off
+  to build on a PC. Needs rustup (stable-msvc) + VS 2022 Build Tools (C++ workload).
 - Testing note: "cc-launcher" in the Start menu is still the old Electron 0.9.0 install; run the
   Rust build with `cargo run` (or target\debug\cc-launcher.exe), not from the Start menu.
 - Note: SessionStart supports only command hooks, so a new tab shows "ready" once its status line

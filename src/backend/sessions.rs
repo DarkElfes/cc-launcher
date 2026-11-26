@@ -57,6 +57,13 @@ impl SessionTracker {
         self.tabs.get(tab)
     }
 
+    /// Known before Claude reports it (a resumed tab that hasn't sent anything yet).
+    pub fn set_session_id(&mut self, tab: &str, session_id: &str) {
+        if let Some(s) = self.tabs.get_mut(tab) {
+            s.session_id.get_or_insert_with(|| session_id.to_string());
+        }
+    }
+
     /// Applies a hook event. Returns the activity before and after (for notifications).
     pub fn handle(&mut self, tab: &str, e: &Value) -> Option<(Activity, Activity)> {
         let s = self.tabs.get_mut(tab)?;
