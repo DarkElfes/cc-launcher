@@ -97,3 +97,16 @@ pub const PERMISSION_MODES: &[&str] = &["default", "acceptEdits", "plan", "auto"
 pub fn effective_permission_mode(picked: Option<&str>) -> String {
     picked.filter(|m| PERMISSION_MODES.contains(m)).unwrap_or("auto").into()
 }
+
+#[cfg(test)]
+mod tests {
+    use super::effective_permission_mode;
+
+    #[test]
+    fn auto_is_the_default_permission_mode() {
+        assert_eq!(effective_permission_mode(None), "auto");
+        assert_eq!(effective_permission_mode(Some("plan")), "plan");
+        assert_eq!(effective_permission_mode(Some("default")), "default");
+        assert_eq!(effective_permission_mode(Some("bypassPermissions")), "auto"); // not offered
+    }
+}

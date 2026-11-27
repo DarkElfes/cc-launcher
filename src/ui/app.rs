@@ -519,6 +519,8 @@ impl LauncherApp {
                 .ok_text(ok)
                 .ok_variant(gpui_kit::component::button::ButtonVariant::Danger)
                 .cancel_text("Cancel")
+                .centered()
+                .width(px(440.))
                 .on_ok(move |_, window, cx| {
                     let on_ok = on_ok.clone();
                     let _ = this.update(cx, |t, cx| on_ok(t, window, cx));
@@ -852,7 +854,10 @@ impl LauncherApp {
                 state.load_history(&read_transcript_messages(&t, 400));
             }
             self.chats.insert(tab_id.clone(), state);
-            self.chat_scroll.insert(tab_id.clone(), ScrollHandle::new());
+            // An earlier conversation opens at its end (applied on the first paint).
+            let scroll = ScrollHandle::new();
+            scroll.scroll_to_bottom();
+            self.chat_scroll.insert(tab_id.clone(), scroll);
         } else {
             let mut args = vec![];
             if let Some(m) = &self.store.settings.model {

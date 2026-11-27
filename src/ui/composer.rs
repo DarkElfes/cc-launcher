@@ -566,17 +566,18 @@ impl Render for Composer {
             .on_drop(cx.listener(|this, paths: &ExternalPaths, _, cx| {
                 this.add_files(paths.paths().iter().map(|p| p.to_string_lossy().to_string()).collect(), cx);
             }))
+            // Ctrl+V reaches the text box as its Paste action before any key listener, so take the
+            // paste here: a screenshot or files copied in Explorer become attachments; text pastes normally.
+            .capture_action(cx.listener(|this, _: &gpui_kit::base::input::Paste, _, cx| {
+                let files = platform::clipboard_attachments();
+                if !files.is_empty() {
+                    this.add_files(files, cx);
+                    cx.stop_propagation();
+                }
+            }))
             .capture_key_down(cx.listener(|this, ev: &KeyDownEvent, window, cx| {
                 let k = &ev.keystroke;
-                if k.modifiers.control && !k.modifiers.alt && (k.key == "v" || k.key == "м") {
-                    // A screenshot or files copied in Explorer become attachments; text pastes normally.
-                    // ("м" is the V key in the Ukrainian layout.)
-                    let files = platform::clipboard_attachments();
-                    if !files.is_empty() {
-                        this.add_files(files, cx);
-                        cx.stop_propagation();
-                    }
-                } else if k.key == "escape" {
+                if k.key == "escape" {
                     if this.menu.take().is_some() {
                         cx.notify();
                     } else {

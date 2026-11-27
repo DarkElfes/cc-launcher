@@ -406,3 +406,21 @@ pub fn write_atomic(path: &std::path::Path, data: &str) -> std::io::Result<()> {
     std::fs::write(&tmp, data)?;
     std::fs::rename(&tmp, path)
 }
+
+#[cfg(test)]
+mod settings_tests {
+    use super::Settings;
+
+    #[test]
+    fn new_settings_round_trip_in_app_json() {
+        let s: Settings = serde_json::from_str(r#"{"permissionMode":"plan","continueLast":false}"#).unwrap();
+        assert_eq!(s.permission_mode.as_deref(), Some("plan"));
+        assert_eq!(s.continue_last, Some(false));
+        let v = serde_json::to_value(&s).unwrap();
+        assert_eq!(v["permissionMode"], "plan");
+        assert_eq!(v["continueLast"], false);
+        // Older app.json files without the keys still load.
+        let old: Settings = serde_json::from_str(r#"{"tabMode":"chat"}"#).unwrap();
+        assert!(old.permission_mode.is_none() && old.continue_last.is_none());
+    }
+}

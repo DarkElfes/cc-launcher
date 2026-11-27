@@ -65,6 +65,12 @@ pub fn apply_component_theme(cx: &mut App) {
     k.title_bar = sidebar();
     k.list = background();
     k.table = background();
+    k.danger = red_strong();
+    k.danger_foreground = c(0xffffff);
+    k.overlay = hsla(0., 0., 0., 0.55);
+    // Dialogs and other newer components read `tokens`, not `colors`: copy the colors over.
+    let tokens = t.semantic_tokens();
+    t.apply_semantic_tokens(&tokens);
 }
 
 /// Registers the embedded Inter faces with the text system.

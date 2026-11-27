@@ -126,6 +126,16 @@ _Last updated: 2026-11-27_
     remove profile) use the app's own gpui-component AlertDialog (`LauncherApp::confirm`) instead of
     Windows message boxes. Removing a profile first deletes its junctions, so the Recycle Bin never
     touches shared sessions. Dialog look not hand-checked yet.
+  - **Fixes after the first look (2026-11-27):** Ctrl+V with a screenshot still pasted nothing:
+    the text box turns Ctrl+V into its `Paste` action before any key listener runs, so the composer now
+    takes that action (`capture_action`) and attaches a clipboard image or copied files; otherwise
+    the text pastes as before. Checked against a real Ctrl+Shift+S screenshot in the clipboard (PNG +
+    Bitmap) at the clipboard-reading level. A chat tab that opens an earlier conversation starts
+    scrolled to the end. The confirm dialog is centered and 440 px wide. Its colors come from the
+    app theme: `apply_component_theme` now copies the colors into gpui-component's `tokens`, which
+    newer components such as the dialog read; it also sets danger = red_strong and a 55 % black overlay.
+    New unit tests cover the auto default and the `permissionMode` / `continueLast` keys in app.json.
+    Not hand-tested: the paste in the running app, the scroll, the dialog look.
   - Memory (release, Task Manager "Memory" = private working set): ~60 MB in a normal window, ~80 MB
     maximized at 2880×1800, ~105 MB with a chat tab maximized; the build before these changes measured
     the same (60 / 95 MB). Debug builds are about the same plus a console window.
