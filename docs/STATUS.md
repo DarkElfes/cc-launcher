@@ -136,6 +136,11 @@ _Last updated: 2026-11-27_
     newer components such as the dialog read; it also sets danger = red_strong and a 55 % black overlay.
     New unit tests cover the auto default and the `permissionMode` / `continueLast` keys in app.json.
     Not hand-tested: the paste in the running app, the scroll, the dialog look.
+  - **Published v0.10.0 as a GitHub pre-release** (2026-11-27, tag on 568ef43 of `gpui-rewrite`, exe built
+    with `--target-dir target/publish` because the running app locked `targetelease`). The updater reads
+    `releases/latest`, which skips pre-releases, so nothing auto-updates to it. After the hand test:
+    `gh release edit v0.10.0 --prerelease=false --latest`. `release.ps1` now tags the built commit
+    (`--target`, must be pushed); without that GitHub tagged `main`.
   - Memory (release, Task Manager "Memory" = private working set): ~60 MB in a normal window, ~80 MB
     maximized at 2880×1800, ~105 MB with a chat tab maximized; the build before these changes measured
     the same (60 / 95 MB). Debug builds are about the same plus a console window.
