@@ -568,10 +568,12 @@ impl Render for Composer {
             }))
             .capture_key_down(cx.listener(|this, ev: &KeyDownEvent, window, cx| {
                 let k = &ev.keystroke;
-                if k.modifiers.control && k.key == "v" {
-                    // A screenshot in the clipboard becomes an attachment; text pastes normally.
-                    if let Some(path) = platform::save_clipboard_image() {
-                        this.add_files(vec![path], cx);
+                if k.modifiers.control && !k.modifiers.alt && (k.key == "v" || k.key == "м") {
+                    // A screenshot or files copied in Explorer become attachments; text pastes normally.
+                    // ("м" is the V key in the Ukrainian layout.)
+                    let files = platform::clipboard_attachments();
+                    if !files.is_empty() {
+                        this.add_files(files, cx);
                         cx.stop_propagation();
                     }
                 } else if k.key == "escape" {

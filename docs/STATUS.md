@@ -120,6 +120,12 @@ _Last updated: 2026-11-27_
     Bin after a confirm; not offered for a session open in a tab. Project header: Explorer / Editor /
     Remove are icon buttons with hover hints; Remove only takes the project off the list (files and
     sessions stay). Not hand-tested yet.
+  - Ctrl+V in the message box also attaches **files copied in Explorer** (clipboard file list; before,
+    only bitmap screenshots worked; checked with a copied PNG and a bitmap) and works with the
+    Ukrainian layout (`м`). Confirmations (delete session, close a running tab, remove project,
+    remove profile) use the app's own gpui-component AlertDialog (`LauncherApp::confirm`) instead of
+    Windows message boxes. Removing a profile first deletes its junctions, so the Recycle Bin never
+    touches shared sessions. Dialog look not hand-checked yet.
   - Memory (release, Task Manager "Memory" = private working set): ~60 MB in a normal window, ~80 MB
     maximized at 2880×1800, ~105 MB with a chat tab maximized; the build before these changes measured
     the same (60 / 95 MB). Debug builds are about the same plus a console window.

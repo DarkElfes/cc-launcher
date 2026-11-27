@@ -45,6 +45,16 @@ pub fn save_clipboard_image() -> Option<String> {
     Some(file.to_string_lossy().to_string())
 }
 
+/// What Ctrl+V should attach: an image in the clipboard (saved as PNG), or files copied in
+/// Explorer (their paths). Empty when the clipboard holds neither, so text pastes normally.
+pub fn clipboard_attachments() -> Vec<String> {
+    if let Some(p) = save_clipboard_image() {
+        return vec![p];
+    }
+    let Ok(mut cb) = arboard::Clipboard::new() else { return vec![] };
+    cb.get().file_list().unwrap_or_default().into_iter().filter(|p| p.is_file()).map(|p| p.to_string_lossy().to_string()).collect()
+}
+
 /// Pasted screenshots are only needed while Claude reads them; drop ones older than 14 days.
 pub fn prune_pasted_images() {
     let cutoff = std::time::SystemTime::now() - std::time::Duration::from_secs(14 * 86_400);

@@ -497,6 +497,36 @@ impl LauncherApp {
         .detach();
     }
 
+    /// Asks before something destructive, in the app's own dialog (not a Windows message box).
+    /// `on_ok` runs when the red button is pressed; Esc or Cancel just closes it.
+    pub fn confirm(
+        &mut self,
+        title: String,
+        detail: String,
+        ok: &'static str,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+        on_ok: impl Fn(&mut Self, &mut Window, &mut Context<Self>) + 'static,
+    ) {
+        let this = cx.entity().downgrade();
+        let on_ok = std::rc::Rc::new(on_ok);
+        window.open_alert_dialog(cx, move |alert, _, _| {
+            let (this, on_ok) = (this.clone(), on_ok.clone());
+            alert
+                .title(title.clone())
+                .description(detail.clone())
+                .show_cancel(true)
+                .ok_text(ok)
+                .ok_variant(gpui_kit::component::button::ButtonVariant::Danger)
+                .cancel_text("Cancel")
+                .on_ok(move |_, window, cx| {
+                    let on_ok = on_ok.clone();
+                    let _ = this.update(cx, |t, cx| on_ok(t, window, cx));
+                    true
+                })
+        });
+    }
+
     /// Moves a past session (its .jsonl and its `<id>/` folder of tool outputs) to the Recycle Bin.
     pub fn delete_session(&mut self, project_id: &str, h: HistorySession, window: &mut Window, cx: &mut Context<Self>) {
         let Some(p) = self.project(project_id).cloned() else { return };
@@ -510,32 +540,20 @@ impl LauncherApp {
         };
         let Some(folder) = folder else { return };
         let title = if h.title.is_empty() { "Untitled session".to_string() } else { h.title.chars().take(80).collect() };
-        let answer = window.prompt(
-            PromptLevel::Warning,
-            &format!("Delete \"{title}\"?"),
-            Some("The conversation goes to the Recycle Bin, for every account. You can restore it from there."),
-            &["Delete", "Cancel"],
-            cx,
-        );
         let pid = project_id.to_string();
-        cx.spawn_in(window, async move |this, cx| {
-            if answer.await != Ok(0) {
-                return;
-            }
+        let detail = "The conversation goes to the Recycle Bin, for every account. You can restore it from there.".to_string();
+        self.confirm(format!("Delete \"{title}\"?"), detail, "Delete", window, cx, move |this, window, cx| {
             let file = folder.join(format!("{}.jsonl", h.id));
             let dir = folder.join(&h.id);
             let mut result = platform::move_to_trash(&file.to_string_lossy());
             if result.is_ok() && dir.is_dir() {
                 result = platform::move_to_trash(&dir.to_string_lossy());
             }
-            let _ = this.update_in(cx, |this, window, cx| {
-                if let Err(e) = result {
-                    this.show_error(format!("Couldn't delete the session: {e}"), window, cx);
-                }
-                this.load_history(&pid, cx);
-            });
-        })
-        .detach();
+            if let Err(e) = result {
+                this.show_error(format!("Couldn't delete the session: {e}"), window, cx);
+            }
+            this.load_history(&pid, cx);
+        });
     }
 
     pub fn load_mcp(&mut self, profile: &str, project_id: &str, force: bool, cx: &mut Context<Self>) {
@@ -1008,14 +1026,8 @@ impl LauncherApp {
             t.profile,
             if t.mode == TabMode::Chat { "working" } else { "running" }
         );
-        let answer = window.prompt(PromptLevel::Warning, "Close this session?", Some(&detail), &["Close tab", "Cancel"], cx);
         let tab = tab.to_string();
-        cx.spawn_in(window, async move |this, cx| {
-            if answer.await == Ok(0) {
-                let _ = this.update_in(cx, |this, window, cx| this.really_close_tab(&tab, window, cx));
-            }
-        })
-        .detach();
+        self.confirm("Close this session?".into(), detail, "Close tab", window, cx, move |this, window, cx| this.really_close_tab(&tab, window, cx));
     }
 
     // ---------- projects & profiles ----------
@@ -1047,28 +1059,16 @@ impl LauncherApp {
 
     pub fn remove_project(&mut self, id: &str, window: &mut Window, cx: &mut Context<Self>) {
         let Some(p) = self.project(id).cloned() else { return };
-        let answer = window.prompt(
-            PromptLevel::Warning,
-            &format!("Remove \"{}\"?", p.name),
-            Some("It is only removed from this list. Files on disk stay untouched. Open sessions for it are closed."),
-            &["Remove", "Cancel"],
-            cx,
-        );
         let id = id.to_string();
-        cx.spawn_in(window, async move |this, cx| {
-            if answer.await != Ok(0) {
-                return;
-            }
-            let _ = this.update_in(cx, |this, window, cx| {
+        let detail = "It is only removed from this list. Files and sessions on disk stay untouched. Its open tabs are closed.".to_string();
+        self.confirm(format!("Remove \"{}\" from the list?", p.name), detail, "Remove", window, cx, move |this, window, cx| {
                 for t in this.tabs.iter().filter(|t| t.project_id.as_deref() == Some(&id)).map(|t| t.id.clone()).collect::<Vec<_>>() {
                     this.really_close_tab(&t, window, cx);
                 }
                 this.store.projects.retain(|p| p.id != id);
                 this.store.save();
                 this.set_view(View::Dashboard, window, cx);
-            });
-        })
-        .detach();
+        });
     }
 
     pub fn add_profile(&mut self, window: &mut Window, cx: &mut Context<Self>) {
@@ -1098,22 +1098,16 @@ impl LauncherApp {
         }
         let dir = profile_dir(name).to_string_lossy().to_string();
         let detail = format!(
-            "The folder {dir} will be moved to the Recycle Bin. This signs that account out on this PC and removes its local session history. You can restore it from the Recycle Bin."
+            "The folder {dir} will be moved to the Recycle Bin. This signs that account out on this PC. Project sessions shared between accounts stay. You can restore it from the Recycle Bin."
         );
-        let answer = window.prompt(PromptLevel::Warning, &format!("Remove profile \"{name}\"?"), Some(&detail), &["Move to Recycle Bin", "Cancel"], cx);
-        cx.spawn_in(window, async move |this, cx| {
-            if answer.await != Ok(0) {
-                return;
-            }
-            let _ = this.update_in(cx, |this, window, cx| {
+        self.confirm(format!("Remove profile \"{name}\"?"), detail, "Move to Recycle Bin", window, cx, move |this, window, cx| {
+                crate::backend::shared_sessions::unlink_profile(std::path::Path::new(&dir));
                 if let Err(e) = platform::move_to_trash(&dir) {
                     this.show_error(e, window, cx);
                 }
                 this.reload_profiles();
                 cx.notify();
-            });
-        })
-        .detach();
+        });
     }
 
     pub fn save_settings(&mut self, window: &mut Window, cx: &mut Context<Self>) {

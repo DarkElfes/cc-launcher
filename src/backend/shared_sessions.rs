@@ -103,6 +103,17 @@ fn same_content(a: &Path, b: &Path) -> bool {
     ma.len() == mb.len() && std::fs::read(a).ok() == std::fs::read(b).ok()
 }
 
+/// Removes a profile's links to shared session folders (before the profile goes to the Recycle
+/// Bin), so nothing can reach the shared sessions through it. Only links are removed.
+pub fn unlink_profile(profile_dir: &Path) {
+    let Ok(rd) = std::fs::read_dir(profile_dir.join("projects")) else { return };
+    for e in rd.flatten() {
+        if e.file_type().map(|t| t.is_symlink()).unwrap_or(false) {
+            let _ = junction::delete(e.path()).and_then(|_| std::fs::remove_dir(e.path()));
+        }
+    }
+}
+
 /// The newest non-empty session of a project in the shared folder.
 pub fn latest_session(cwd: &str) -> Option<String> {
     let dir = shared_dir(cwd)?;
@@ -154,7 +165,8 @@ mod tests {
         link_profile(&link2, &shared, "prof2").unwrap();
         assert!(link2.join("a.jsonl").exists());
 
-        std::fs::remove_dir(&link).unwrap(); // removes only the link
+        unlink_profile(&root.join("prof")); // removes only the link
+        assert!(!link.exists());
         std::fs::remove_dir(&link2).unwrap();
         assert!(shared.join("a.jsonl").exists());
         std::fs::remove_dir_all(&root).unwrap();
