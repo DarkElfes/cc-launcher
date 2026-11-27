@@ -13,6 +13,10 @@ cargo build --release
 if ($LASTEXITCODE -ne 0) { throw 'cargo build failed' }
 
 $exe = 'target\release\cc-launcher.exe'
-gh release create $tag $exe --title "cc-launcher $version" --notes "cc-launcher $version"
+# Tag the commit that was built. Without --target GitHub tags the default branch (main).
+$commit = (git rev-parse HEAD).Trim()
+git fetch -q origin
+if (-not (git branch -r --contains $commit)) { throw 'Push this commit first; the release tag points at it.' }
+gh release create $tag $exe --target $commit --title "cc-launcher $version" --notes "cc-launcher $version"
 if ($LASTEXITCODE -ne 0) { throw 'gh release create failed' }
 Write-Output "Published $tag"
