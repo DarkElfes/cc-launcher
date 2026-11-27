@@ -14,6 +14,7 @@ pub mod platform;
 pub mod profile_settings;
 pub mod profiles;
 pub mod sessions;
+pub mod shared_sessions;
 pub mod store;
 pub mod terminal;
 pub mod types;

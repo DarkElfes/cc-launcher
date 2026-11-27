@@ -159,6 +159,7 @@ impl LauncherApp {
     pub fn render_project_header(&mut self, project: &Project, cx: &mut Context<Self>) -> AnyElement {
         let mode = self.store.settings.tab_mode.unwrap_or_default();
         let path = project.path.clone();
+        let cont = self.store.settings.continue_last.unwrap_or(true);
         let path2 = project.path.clone();
         let id = project.id.clone();
         let mut launch = div().flex().flex_wrap().items_center().gap(px(8.));
@@ -178,6 +179,14 @@ impl LauncherApp {
                                 .on_click(cx.listener(|this, _, _, cx| this.set_tab_mode(TabMode::Terminal, cx))),
                         ),
                 )
+                .child(
+                    div()
+                        .flex()
+                        .border_1()
+                        .border_color(border())
+                        .child(chip_icon("sess-last", "clock-counter-clockwise", "Last session", cont).border_0().on_click(cx.listener(|this, _, _, cx| this.set_continue_last(true, cx))))
+                        .child(chip_icon("sess-new", "plus", "New session", !cont).border_0().on_click(cx.listener(|this, _, _, cx| this.set_continue_last(false, cx)))),
+                )
                 .child(muted(if self.profiles.is_empty() { "No accounts yet. Add one under Accounts first." } else { "with" }));
             for p in self.profiles.clone() {
                 let hot = usage_hot_pct(p.usage.as_ref()) >= 90.;
@@ -192,7 +201,7 @@ impl LauncherApp {
                         .child(profile_tag(&p.name))
                         .children(usage_inline(p.usage.as_ref()))
                         .when(!p.signed_in, |d| d.child(badge("login", amber())))
-                        .on_click(cx.listener(move |this, _, w, cx| this.open_tab(OpenRequest::project(&pid, &name), w, cx))),
+                        .on_click(cx.listener(move |this, _, w, cx| this.launch_project(&pid, &name, w, cx))),
                 );
             }
         }

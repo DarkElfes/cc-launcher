@@ -372,6 +372,7 @@ impl LauncherApp {
             .filter(|t| t.exit_code.is_none())
             .filter_map(|t| self.tracker.get(&t.id).and_then(|s| s.session_id.clone()))
             .collect();
+        let default_prof = project.last_profile.clone().filter(|p| self.profiles.iter().any(|x| &x.name == p)).or_else(|| self.profiles.first().map(|p| p.name.clone())).unwrap_or_default();
         let pid = project.id.clone();
         let hist_body = match self.history.get(&project.id).cloned() {
             None => muted("Loading…"),
@@ -379,7 +380,9 @@ impl LauncherApp {
             Some(items) => div().flex().flex_col().gap(px(4.)).children(items.into_iter().enumerate().map(|(i, h)| {
                 let is_open = open_ids.contains(&h.id);
                 let pid = pid.clone();
-                let (hid, hprof) = (h.id.clone(), h.profile.clone());
+                // Shared sessions have no account: they open with the account last used here.
+                let hprof = if h.profile.is_empty() { default_prof.clone() } else { h.profile.clone() };
+                let hid = h.id.clone();
                 div()
                     .flex()
                     .items_center()
@@ -396,7 +399,7 @@ impl LauncherApp {
                             } else {
                                 h.title.clone()
                             }))
-                            .child(div().flex().items_center().gap(px(8.)).text_size(px(10.)).text_color(muted_fg()).child(profile_tag(&h.profile)).child(time_ago(Some(h.modified_at)))),
+                            .child(div().flex().items_center().gap(px(8.)).text_size(px(10.)).text_color(muted_fg()).when(!h.profile.is_empty(), |d| d.child(profile_tag(&h.profile))).child(time_ago(Some(h.modified_at)))),
                     )
                     .child(if is_open {
                         muted("open").into_any_element()

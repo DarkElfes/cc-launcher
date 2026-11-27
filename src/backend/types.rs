@@ -71,6 +71,9 @@ pub struct Settings {
     /// How new Claude tabs open.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tab_mode: Option<TabMode>,
+    /// Account buttons continue the project's latest session (None = yes) or start a new one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub continue_last: Option<bool>,
     /// Widths of the sidebar and the session panel (px), when changed by dragging.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub sidebar_width: Option<f32>,

@@ -65,8 +65,16 @@ pub fn list_history(cwd: &str, profiles: &[(String, std::path::PathBuf)], limit:
     }
     let ws = regex::Regex::new(r"\s+").unwrap();
     let mut out = vec![];
-    for (pname, dir) in profiles {
-        let folder = dir.join("projects").join(&name);
+    // Shared sessions first (no account: any account opens them), then folders not linked yet.
+    let shared = super::shared_sessions::shared_dir(cwd);
+    let mut folders: Vec<(String, std::path::PathBuf)> = shared.iter().map(|s| (String::new(), s.clone())).collect();
+    folders.extend(profiles.iter().map(|(p, dir)| (p.clone(), dir.join("projects").join(&name))));
+    let mut seen = std::collections::HashSet::new();
+    for (pname, folder) in folders {
+        let Ok(canon) = std::fs::canonicalize(&folder) else { continue };
+        if !seen.insert(canon) {
+            continue; // a profile folder that links to the shared one
+        }
         let Ok(rd) = std::fs::read_dir(&folder) else { continue };
         for e in rd.flatten() {
             let fname = e.file_name().to_string_lossy().to_string();

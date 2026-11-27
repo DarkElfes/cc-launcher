@@ -102,6 +102,20 @@ _Last updated: 2026-11-27_
     resume works. A **new** chat tab is a new session and starts empty, like `claude` without
     `--continue`. Earlier sessions open through the panel's History list (play button) or come back
     on restart.
+  - **Shared sessions across accounts (2026-11-27):** Claude Code keeps a project's sessions and
+    auto memory in `<config dir>/projects/<dir>/`, so each account had its own history. Now
+    `backend/shared_sessions.rs` keeps the real folder in `~/.claude-profiles/_shared/projects/<dir>/`
+    and makes every profile's folder a directory junction to it (`junction` crate, no admin needed).
+    It runs when a project tab opens and no other tab of that project is open. Existing folders are
+    merged first: renames only, nothing deleted; a clash with different content is kept as
+    `<name>.from-<profile>.bak`. History lists each session once (no account tag for shared ones); ▶
+    opens it with the project's last account. Project header: **Last session / New session** chips
+    (`settings.continueLast`, default Last). An account button continues the newest shared session
+    in that account, or shows its tab if it's already open.
+    Checked with real claude 2.1.x in a temp project: a session written through the junction lands in
+    `_shared`, and `--resume <id>` from the other account finds it and appends to the **same file**.
+    The answer itself hit that account's 5-hour limit. Unit test covers merge and link. **Not hand-tested
+    in the app yet.** The first run moves the existing cc-launcher sessions of `darkness` into `_shared`.
   - Memory (release, Task Manager "Memory" = private working set): ~60 MB in a normal window, ~80 MB
     maximized at 2880×1800, ~105 MB with a chat tab maximized; the build before these changes measured
     the same (60 / 95 MB). Debug builds are about the same plus a console window.

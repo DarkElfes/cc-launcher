@@ -31,6 +31,7 @@ trash = "5"
 arboard = { version = "3", default-features = false, features = ["image-data"] }
 image = { version = "0.25", default-features = false, features = ["png"] }
 rust-embed = "8"
+junction = "2.1.0"
 
 [target.'cfg(windows)'.dependencies]
 tauri-winrt-notification = "0.7"

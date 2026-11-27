@@ -757,6 +757,9 @@ impl LauncherApp {
         };
         create_profile(&req.profile).map_err(|e| e.to_string())?; // also (re)installs the usage status line
         self.apply_profile_settings(Some(&req.profile));
+        if let Some(pid) = req.project_id.clone().filter(|_| req.kind == TabKind::Project) {
+            self.share_sessions(&pid, window, cx);
+        }
         let tab_id = uuid::Uuid::new_v4().to_string();
         if let Some(p) = &req.resume_path {
             if !Self::resume_path_ok(p) {
@@ -1091,6 +1094,44 @@ impl LauncherApp {
         self.settings_saved = true;
         let _ = window;
         cx.notify();
+    }
+
+    pub fn set_continue_last(&mut self, on: bool, cx: &mut Context<Self>) {
+        self.store.settings.continue_last = Some(on);
+        self.store.save();
+        cx.notify();
+    }
+
+    /// Links every account's session folder of the project to the shared one (see
+    /// shared_sessions.rs). Skipped while a tab of the project is open: its claude may be writing there.
+    fn share_sessions(&mut self, project_id: &str, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(path) = self.project(project_id).map(|p| p.path.clone()) else { return };
+        if self.tabs.iter().any(|t| t.project_id.as_deref() == Some(project_id) && t.exit_code.is_none()) {
+            return;
+        }
+        let errors = crate::backend::shared_sessions::ensure_shared(&path);
+        if !errors.is_empty() {
+            self.show_error(format!("Couldn't share this project's sessions between accounts: {}", errors.join("; ")), window, cx);
+        }
+    }
+
+    /// An account button in the project header: continues the latest session (from any account)
+    /// unless "New session" is chosen. A session already open in a tab is shown instead.
+    pub fn launch_project(&mut self, project_id: &str, profile: &str, window: &mut Window, cx: &mut Context<Self>) {
+        let mut req = OpenRequest::project(project_id, profile);
+        if self.store.settings.continue_last.unwrap_or(true) {
+            self.share_sessions(project_id, window, cx);
+            let latest = self.project(project_id).and_then(|p| crate::backend::shared_sessions::latest_session(&p.path));
+            if let Some(id) = latest {
+                let open = self.tabs.iter().find(|t| self.tracker.get(&t.id).and_then(|s| s.session_id.as_deref()) == Some(id.as_str())).map(|t| t.id.clone());
+                if let Some(tab) = open {
+                    self.select_tab(&tab, window, cx);
+                    return;
+                }
+                req.resume_session_id = Some(id);
+            }
+        }
+        self.open_tab(req, window, cx);
     }
 
     pub fn set_tab_mode(&mut self, mode: TabMode, cx: &mut Context<Self>) {
