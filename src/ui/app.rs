@@ -1303,8 +1303,12 @@ impl LauncherApp {
     pub fn dictate(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let Some(tab) = self.active_tab().cloned() else { return };
         if tab.mode == TabMode::Chat {
-            // Claude Code's dictation exists only in its terminal UI: chat tabs borrow a hidden one.
-            let cwd = tab.project_id.as_deref().and_then(|id| self.project(id)).map(|p| p.path.clone()).unwrap_or_default();
+            // Claude Code's dictation exists only in its terminal UI: chat tabs borrow a hidden one. It
+            // runs in an empty folder of the app, not the project: no project trust question, no project
+            // settings or hooks, and one session per account serves every project.
+            let dir = crate::backend::store::data_dir().join("dictation");
+            let _ = std::fs::create_dir_all(&dir);
+            let cwd = dir.to_string_lossy().to_string();
             return self.chat_dictate(&tab.id, &tab.profile, &cwd, window, cx);
         }
         if self.store.settings.voice_mode != Some(VoiceMode::Tap) {

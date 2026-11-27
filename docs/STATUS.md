@@ -141,6 +141,13 @@ _Last updated: 2026-11-27_
     `releases/latest`, which skips pre-releases, so nothing auto-updates to it. After the hand test:
     `gh release edit v0.10.0 --prerelease=false --latest`. `release.ps1` now tags the built commit
     (`--target`, must be pushed); without that GitHub tagged `main`.
+  - **Chat dictation trust fix (2026-11-27):** the hidden session ran in the project folder, so an
+    account that never opened that folder interactively stopped at Claude Code's "trust this folder?"
+    and dictation failed. It now runs in `%APPDATA%-launcherdictation` (empty, app-owned; one
+    session per account for all projects). The app answers the trust question there itself. The
+    menu starts on **"No, exit"** (Claude Code 2.1.x), so it presses Down until the `❯` line says "yes",
+    then Enter. Checked with `--dump-claude-screen` on a fresh folder: Down+Enter → prompt ready, and the
+    next start doesn't ask again. A plain Enter would have exited. Full dictation in the app not re-tested.
   - Memory (release, Task Manager "Memory" = private working set): ~60 MB in a normal window, ~80 MB
     maximized at 2880×1800, ~105 MB with a chat tab maximized; the build before these changes measured
     the same (60 / 95 MB). Debug builds are about the same plus a console window.

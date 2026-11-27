@@ -43,6 +43,8 @@ pub struct DictationRun {
     pub phase_at: i64,
     pub last: PromptState,
     pub stable_at: i64,
+    /// When the app answered Claude Code's folder-trust question for its own dictation folder (0 = not yet).
+    pub trust_answered_at: i64,
 }
 
 const START_TIMEOUT_MS: i64 = 20_000;
@@ -118,6 +120,7 @@ impl LauncherApp {
             phase_at: now_ms(),
             last: PromptState::default(),
             stable_at: now_ms(),
+            trust_answered_at: 0,
         });
         self.set_dictation_status(Some("Starting voice… (Claude Code)".into()), cx);
 
@@ -257,10 +260,28 @@ impl LauncherApp {
                 }
                 let screen = dictation::screen_lines(&session.term).join("\n").to_lowercase();
                 if screen.contains("trust") && screen.contains("folder") {
+                    // The hidden session runs in the app's own empty folder (see `dictate`), so trusting it is
+                    // safe. The menu starts on "No, exit": move down until the ❯ line says "yes", then
+                    // Enter (one key per tick). Still asking 4 s after that: give up.
+                    if run.trust_answered_at == 0 {
+                        let on_yes = screen.lines().any(|l| l.contains('❯') && l.contains("yes"));
+                        if on_yes {
+                            session.term.write(vec![13u8]); // Enter
+                            self.dict_run.as_mut().unwrap().trust_answered_at = now;
+                        } else if age < 3_000 {
+                            session.term.write(b"\x1b[B".to_vec()); // Down
+                        } else {
+                            self.dict_run.as_mut().unwrap().trust_answered_at = now - 4_000; // no "yes" found
+                        }
+                        return true;
+                    }
+                    if now - run.trust_answered_at < 4_000 {
+                        return true;
+                    }
                     let profile = run.profile.clone();
                     self.dict_sessions.remove(&profile);
                     self.dictation_end(
-                        Some("Claude Code asks whether to trust this folder. Open a Terminal tab in this project once, accept it, then try dictation again.".into()),
+                        Some("Claude Code keeps asking whether to trust the dictation folder. Try dictation again.".into()),
                         window,
                         cx,
                     );
