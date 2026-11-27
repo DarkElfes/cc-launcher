@@ -33,6 +33,11 @@ pub struct DictationRun {
     pub profile: String,
     /// The message box text before dictation started (dictated words are appended).
     pub base: String,
+    /// Hidden-prompt text that isn't part of this run's words (leftovers the clear didn't remove,
+    /// or words already handed over before the user edited the message box).
+    pub prefix: String,
+    /// What the run last put into the message box; anything else there means the user edited it.
+    pub shown: String,
     pub held: Arc<AtomicBool>,
     pub phase: DictPhase,
     pub phase_at: i64,
@@ -53,6 +58,16 @@ fn is_problem(status: &str) -> bool {
         .iter()
         .any(|k| s.contains(k))
         && !s.contains("listening")
+}
+
+/// The hidden prompt's words minus `prefix`. Claude Code may revise the last interim words, so the
+/// prefix is matched up to where the two texts start to differ.
+fn new_words<'a>(prefix: &str, hidden: &'a str) -> &'a str {
+    if prefix.is_empty() {
+        return hidden;
+    }
+    let common: usize = prefix.chars().zip(hidden.chars()).take_while(|(a, b)| a == b).map(|(_, b)| b.len_utf8()).sum();
+    hidden[common..].trim_start()
 }
 
 fn joined(base: &str, words: &str) -> String {
@@ -95,7 +110,9 @@ impl LauncherApp {
         self.dict_run = Some(DictationRun {
             tab: tab.to_string(),
             profile: profile.to_string(),
+            shown: base.clone(),
             base,
+            prefix: String::new(),
             held: Arc::new(AtomicBool::new(false)),
             phase: DictPhase::Starting,
             phase_at: now_ms(),
@@ -137,19 +154,73 @@ impl LauncherApp {
 
     /// Ends the run: puts the final words (if any) into the message box, clears the hidden prompt.
     fn dictation_end(&mut self, error: Option<String>, window: &mut Window, cx: &mut Context<Self>) {
-        let Some(run) = self.dict_run.take() else { return };
+        if !self.dictation_stop(cx) {
+            return;
+        }
+        if let Some(e) = error {
+            self.show_error(e, window, cx);
+        }
+        self.composer.update(cx, |c, cx| c.focus_input(window, cx));
+        cx.notify();
+    }
+
+    /// The message was sent from `tab` while dictating there: turn the mic off and drop the hidden
+    /// prompt's words, so the next dictation starts from an empty box.
+    pub fn dictation_on_send(&mut self, tab: &str, cx: &mut Context<Self>) {
+        if self.dict_run.as_ref().is_some_and(|r| r.tab == tab) {
+            self.dictation_stop(cx);
+            cx.notify();
+        }
+    }
+
+    /// Stops the run (if any) and clears the hidden prompt, now and again a bit later: after the key
+    /// is released Claude Code may still type the final transcript. Returns false if nothing ran.
+    fn dictation_stop(&mut self, cx: &mut Context<Self>) -> bool {
+        let Some(run) = self.dict_run.take() else { return false };
         run.held.store(false, Ordering::Relaxed);
         if let Some(s) = self.dict_sessions.get_mut(&run.profile) {
             s.term.write(CLEAR_PROMPT.to_vec());
             s.last_used = now_ms();
         }
         self.set_dictation_status(None, cx);
-        if let Some(e) = error {
-            self.show_error(e, window, cx);
+        let profile = run.profile;
+        cx.spawn(async move |this, cx| {
+            for _ in 0..3 {
+                cx.background_executor().timer(Duration::from_millis(1000)).await;
+                let _ = this.update(cx, |this, _| {
+                    if this.dict_run.is_none() {
+                        if let Some(s) = this.dict_sessions.get(&profile) {
+                            s.term.write(CLEAR_PROMPT.to_vec());
+                        }
+                    }
+                });
+            }
+        })
+        .detach();
+        true
+    }
+
+    /// The user edited the message box during the run: keep their text and count only words
+    /// dictated from now on.
+    fn dictation_rebase(&mut self, cx: &mut Context<Self>) {
+        let current = self.composer.read(cx).text(cx);
+        if let Some(run) = self.dict_run.as_mut() {
+            if current != run.shown {
+                run.base = current.clone();
+                run.shown = current;
+                run.prefix = run.last.text.clone();
+            }
         }
-        let _ = run.tab;
-        self.composer.update(cx, |c, cx| c.focus_input(window, cx));
-        cx.notify();
+    }
+
+    /// Shows base + this run's words in the message box.
+    fn dictation_show(&mut self, hidden: &str, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(run) = self.dict_run.as_mut() else { return };
+        let text = joined(&run.base, new_words(&run.prefix, hidden));
+        if text != run.shown {
+            run.shown = text.clone();
+            self.composer.update(cx, |c, cx| c.set_text(&text, window, cx));
+        }
     }
 
     /// One poll step; returns false when the run is over.
@@ -167,11 +238,18 @@ impl LauncherApp {
         match phase {
             DictPhase::Starting => {
                 if state.ready {
-                    session.term.write(CLEAR_PROMPT.to_vec());
+                    // Leftover words from an earlier run: clear (Ctrl+U takes a line at a time) and
+                    // look again; whatever still stays after a while is ignored as a prefix.
+                    if !state.text.is_empty() && age < 2_000 {
+                        session.term.write(CLEAR_PROMPT.to_vec());
+                        return true;
+                    }
                     let held = run.held.clone();
                     held.store(true, Ordering::Relaxed);
                     dictation::hold_key(session.term.input_sender(), held);
                     let run = self.dict_run.as_mut().unwrap();
+                    run.prefix = state.text.clone();
+                    run.last = state;
                     run.phase = DictPhase::Listening;
                     run.phase_at = now;
                     self.set_dictation_status(Some("Listening… press the mic or Ctrl+Space again to stop".into()), cx);
@@ -203,13 +281,10 @@ impl LauncherApp {
                 true
             }
             DictPhase::Listening => {
-                let base = run.base.clone();
-                let changed = state.text != run.last.text;
-                if changed {
-                    let text = joined(&base, &state.text);
-                    self.composer.update(cx, |c, cx| c.set_text(&text, window, cx));
-                }
-                if is_problem(&state.status) && state.status != run.last.status {
+                let status_changed = state.status != run.last.status;
+                self.dictation_rebase(cx);
+                self.dictation_show(&state.text, window, cx);
+                if is_problem(&state.status) && status_changed {
                     let s = state.status.clone();
                     self.set_dictation_status(Some(format!("{s} (press the mic again to stop)")), cx);
                 }
@@ -221,14 +296,13 @@ impl LauncherApp {
                 true
             }
             DictPhase::Finishing => {
+                self.dictation_rebase(cx);
                 let run = self.dict_run.as_mut().unwrap();
                 if state.text != run.last.text || state.status.contains("listening") {
                     run.stable_at = now;
                 }
-                let base = run.base.clone();
                 run.last = state.clone();
-                let text = joined(&base, &state.text);
-                self.composer.update(cx, |c, cx| c.set_text(&text, window, cx));
+                self.dictation_show(&state.text, window, cx);
                 let stable = now - self.dict_run.as_ref().unwrap().stable_at > FINISH_STABLE_MS;
                 if (stable && age > FINISH_STABLE_MS) || age > FINISH_TIMEOUT_MS {
                     let problem = (state.text.is_empty() && is_problem(&state.status)).then(|| format!("Dictation: {}", state.status));

@@ -229,6 +229,15 @@ impl LauncherApp {
                 .child(markdown(SharedString::from(format!("md-{tab}-{id}")), &text))
                 .when(streaming, |d| d.child(div().w(px(6.)).h(px(12.)).bg(theme::foreground().opacity(0.7))))
                 .into_any_element(),
+            ChatItem::Thinking { text, streaming: false, .. } if text.is_empty() => div()
+                .flex()
+                .items_center()
+                .gap(px(6.))
+                .text_xs()
+                .text_color(muted_fg())
+                .child(icon("brain", muted_fg()))
+                .child("Thought (text not saved by Claude Code)")
+                .into_any_element(),
             ChatItem::Thinking { id, text, streaming, open, .. } => {
                 let tab = tab.to_string();
                 div()

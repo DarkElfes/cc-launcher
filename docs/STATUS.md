@@ -79,6 +79,17 @@ _Last updated: 2026-11-26_
   - Debug helpers: `cc-launcher --dump-claude-screen <claude.exe> <cwd> <config dir> [secs]
     [text|hold:N]` prints the hidden screen (check the prompt layout after a Claude Code update);
     debug builds with `CCL_DEBUG_DICTATE=<secs>` start dictation in the active tab and stop it.
+  - **Dictation fixes (2026-11-27):** the user saw old words come back. Two causes: sending
+    with Enter didn't stop the mic, and the hidden prompt kept the old text. Now: Send ends the
+    run (`dictation_on_send`). Ending clears the hidden prompt now and again 1/2/3 s later, because
+    the final transcript can arrive late. Start keeps clearing until the prompt is empty (up to 2 s)
+    and ignores any leftover as a prefix. Editing the box while dictating (e.g. clearing it)
+    rebases: the user's text is kept and only new words are added. Not hand-tested yet.
+  - **Thinking in chat history (2026-11-27):** Claude Code transcripts keep thinking blocks
+    without text (`"thinking": ""` + signature), so a reopened chat had no thoughts. The app now saves
+    live thinking to `%APPDATA%\cc-launcher\thinking.jsonl` (key: message id + block position;
+    capped at 20 MB) and fills it in on resume (`backend/thinking_cache.rs`). Older sessions show
+    "Thought (text not saved by Claude Code)". Not hand-tested yet.
   - Memory (release, Task Manager "Memory" = private working set): ~60 MB in a normal window, ~80 MB
     maximized at 2880×1800, ~105 MB with a chat tab maximized; the build before these changes measured
     the same (60 / 95 MB). Debug builds are about the same plus a console window.

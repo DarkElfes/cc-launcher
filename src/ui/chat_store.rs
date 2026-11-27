@@ -2,7 +2,9 @@
 //! (https://code.claude.com/docs/en/headless).
 
 use crate::backend::types::{js, ChatPermissionRequest};
+use crate::backend::thinking_cache;
 use serde_json::Value;
+use std::collections::HashMap;
 
 #[derive(Clone, Debug)]
 pub struct ToolResult {
@@ -46,6 +48,10 @@ pub struct ChatState {
     pub permission_mode: Option<String>,
     /// Stop was clicked; the turn's `result` shows as "Stopped" instead of an error.
     pub stop_requested: bool,
+    /// Finished live thinking blocks (cache key, text) for the app to save; see thinking_cache.
+    pub thinking_done: Vec<(String, String)>,
+    /// Saved thinking used while loading history (transcripts don't keep the text).
+    thinking_saved: HashMap<String, String>,
     current_msg: Option<String>,
     seq: u64,
 }
@@ -181,17 +187,37 @@ impl ChatState {
                     }
                     if bt == "text" || bt == "thinking" {
                         let thinking = bt == "thinking";
-                        let text = b.get("text").or_else(|| b.get("thinking")).and_then(|v| v.as_str()).unwrap_or("").to_string();
+                        let history = e.get("history").and_then(|v| v.as_bool()) == Some(true);
+                        let mut text = b.get("text").or_else(|| b.get("thinking")).and_then(|v| v.as_str()).unwrap_or("").to_string();
+                        // Position of this thinking block within its message (the cache key).
+                        let nth = |items: &[ChatItem], upto: usize| {
+                            items[..upto].iter().filter(|x| matches!(x, ChatItem::Thinking { msg_id: m, .. } if *m == msg_id)).count()
+                        };
                         if let Some(i) = self.find_streaming(thinking, msg_id.as_deref()) {
+                            let n = nth(&self.items, i);
                             match &mut self.items[i] {
                                 ChatItem::Text { text: t, streaming, .. } | ChatItem::Thinking { text: t, streaming, .. } => {
                                     if !text.is_empty() {
                                         *t = text;
                                     }
                                     *streaming = false;
+                                    if let (true, Some(m)) = (thinking && !t.is_empty(), &msg_id) {
+                                        self.thinking_done.push((thinking_cache::key(m, n), t.clone()));
+                                    }
                                 }
                                 _ => {}
                             }
+                        } else if thinking && (history || !text.is_empty()) {
+                            let n = nth(&self.items, self.items.len());
+                            if let Some(m) = &msg_id {
+                                if text.is_empty() {
+                                    text = self.thinking_saved.get(&thinking_cache::key(m, n)).cloned().unwrap_or_default();
+                                } else if !history {
+                                    self.thinking_done.push((thinking_cache::key(m, n), text.clone()));
+                                }
+                            }
+                            let id = self.nid();
+                            self.items.push(ChatItem::Thinking { id, msg_id: msg_id.clone(), text, streaming: false, open: false });
                         } else if !text.is_empty() {
                             let id = self.nid();
                             self.items.push(if thinking {
@@ -286,9 +312,11 @@ impl ChatState {
     }
 
     pub fn load_history(&mut self, events: &[Value]) {
+        self.thinking_saved = thinking_cache::load(&thinking_cache::keys_in(events));
         for e in events {
             self.apply(e);
         }
+        self.thinking_saved.clear();
         if !events.is_empty() {
             self.notice("Earlier messages of this session. New messages continue it.".into(), Tone::Info);
         }

@@ -543,7 +543,9 @@ impl LauncherApp {
                     }
                     let before = self.tracker.get(&tab).map(|s| s.activity);
                     self.tracker.chat_event(&tab, &event);
-                    self.chats.entry(tab.clone()).or_default().apply(&event);
+                    let chat = self.chats.entry(tab.clone()).or_default();
+                    chat.apply(&event);
+                    crate::backend::thinking_cache::save(std::mem::take(&mut chat.thinking_done));
                     if event.get("type").and_then(|t| t.as_str()) == Some("result") {
                         // A finished turn without a Stop hook (e.g. an error) still ends "working".
                         if let Some(b) = before {
@@ -1312,6 +1314,7 @@ impl LauncherApp {
                     false
                 };
                 if ok {
+                    self.dictation_on_send(&tab.id, cx);
                     self.composer.update(cx, |c, cx| c.sent(text, window, cx));
                 }
             }
