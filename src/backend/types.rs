@@ -79,8 +79,8 @@ pub struct Settings {
     /// Model for new Claude tabs (alias like "opus" / "sonnet"); None = account default.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub model: Option<String>,
-    /// Permission mode picked for chat tabs (`--permission-mode` value); None = Default (the
-    /// account's `permissions.defaultMode`, else auto like the interactive CLI).
+    /// Permission mode picked for chat tabs (`--permission-mode` value); None = auto, like the
+    /// interactive CLI.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub permission_mode: Option<String>,
     /// Session side panel visible (was localStorage in the Electron build).

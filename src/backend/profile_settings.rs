@@ -92,17 +92,8 @@ pub fn ensure_dictate_key(dir: &Path) {
 /// Permission modes the chat tabs pass to `--permission-mode`.
 pub const PERMISSION_MODES: &[&str] = &["default", "acceptEdits", "plan", "auto"];
 
-/// The mode a chat tab starts in. `picked` is the app's choice (None = Default): then the
-/// profile's own `permissions.defaultMode` (user settings.json), else `auto`, which is the
-/// interactive CLI's built-in default. (`claude -p` alone would start in Manual.)
-pub fn effective_permission_mode(profile: &str, picked: Option<&str>) -> String {
-    if let Some(m) = picked.filter(|m| PERMISSION_MODES.contains(m)) {
-        return m.into();
-    }
-    let file = super::profiles::profile_dir(profile).join("settings.json");
-    super::types::read_json_file(&file)
-        .and_then(|v| v.pointer("/permissions/defaultMode").and_then(|m| m.as_str()).map(String::from))
-        .map(|m| if m == "manual" { "default".into() } else { m })
-        .filter(|m| PERMISSION_MODES.contains(&m.as_str()))
-        .unwrap_or_else(|| "auto".into())
+/// The mode a chat tab starts in: the app's pick, else `auto` (the interactive CLI's built-in
+/// default; `claude -p` alone would start in Manual).
+pub fn effective_permission_mode(picked: Option<&str>) -> String {
+    picked.filter(|m| PERMISSION_MODES.contains(m)).unwrap_or("auto").into()
 }

@@ -25,9 +25,8 @@ impl EventEmitter<ComposerEvent> for Composer {}
 /// Models offered in the picker: (alias passed to `--model` / `/model`, label). "" = account default.
 pub const MODELS: &[(&str, &str)] = &[("", "Default model"), ("opus", "Opus"), ("sonnet", "Sonnet"), ("haiku", "Haiku")];
 
-/// Permission modes for chat tabs: (value for `--permission-mode`, label, hint). "" = account default.
+/// Permission modes for chat tabs: (value for `--permission-mode`, label, hint). Auto is the default.
 pub const MODES: &[(&str, &str, &str)] = &[
-    ("", "Default", "The account's setting, else Auto (like the CLI)"),
     ("default", "Ask permissions", "Ask before edits and commands"),
     ("acceptEdits", "Accept edits", "Edit files without asking"),
     ("plan", "Plan mode", "Plan first, no changes until you approve"),
@@ -59,7 +58,7 @@ pub struct Composer {
     /// Chat-tab dictation in progress: its status line ("Listening…", an error, …).
     pub dictation: Option<String>,
     pub model: Option<String>,
-    /// Permission mode picked for the tab (None = Default).
+    /// Permission mode picked for the tab (None = auto).
     pub mode: Option<String>,
     /// The mode Claude Code reports it is in (init / status events).
     pub actual_mode: Option<String>,
@@ -244,16 +243,12 @@ impl Composer {
     }
 
     /// The picked mode; what Claude Code reports wins when it differs (e.g. auto wasn't
-    /// available, or an approved plan moved on). "Default" shows the mode it resolved to.
+    /// available, or an approved plan moved on). Nothing picked = auto.
     fn mode_label(&self) -> String {
         let label = |v: &str| MODES.iter().find(|(m, _, _)| *m == v).map(|(_, l, _)| l.to_string()).unwrap_or_else(|| v.to_string());
         let actual = self.actual_mode.as_deref().map(|m| if m == "manual" { "default" } else { m });
-        match (self.mode.as_deref(), actual) {
-            (None, Some(a)) => format!("Default · {}", label(a)),
-            (None, None) => "Default".into(),
-            (Some(p), Some(a)) if a != p => label(a),
-            (Some(p), _) => label(p),
-        }
+        let picked = self.mode.as_deref().unwrap_or("auto");
+        label(actual.unwrap_or(picked))
     }
 
     fn toggle_menu(&mut self, m: Menu, cx: &mut Context<Self>) {
@@ -366,7 +361,7 @@ impl Composer {
                 }
             }
             Menu::Mode => {
-                let cur = self.mode.clone().unwrap_or_default();
+                let cur = self.mode.clone().unwrap_or_else(|| "auto".into());
                 for (i, (value, label, hint)) in MODES.iter().enumerate() {
                     let on = *value == cur;
                     let value = value.to_string();

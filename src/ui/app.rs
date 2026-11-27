@@ -56,7 +56,7 @@ pub struct Tab {
     pub started_at: i64,
     /// Model alias for this tab (None = account default).
     pub model: Option<String>,
-    /// Permission mode picked for this chat tab (None = Default).
+    /// Permission mode picked for this chat tab (None = auto).
     pub permission_mode: Option<String>,
 }
 
@@ -780,7 +780,7 @@ impl LauncherApp {
             self.tracker.open(&tab_id, profile_dir(&req.profile));
             self.chat.open(
                 &tab_id,
-                ChatStartOptions { claude, cwd, env: self.claude_env(&req.profile, &tab_id), resume, permission_mode: Some(effective_permission_mode(&req.profile, self.store.settings.permission_mode.as_deref())), model: self.store.settings.model.clone() },
+                ChatStartOptions { claude, cwd, env: self.claude_env(&req.profile, &tab_id), resume, permission_mode: Some(effective_permission_mode(self.store.settings.permission_mode.as_deref())), model: self.store.settings.model.clone() },
             );
             let mut state = ChatState::default();
             if let Some(t) = transcript {
@@ -1281,7 +1281,7 @@ impl LauncherApp {
                 if let Some(t) = self.tabs.iter_mut().find(|t| t.id == tab.id) {
                     t.permission_mode = mode.clone();
                 }
-                let effective = effective_permission_mode(&tab.profile, mode.as_deref());
+                let effective = effective_permission_mode(mode.as_deref());
                 self.chat.set_permission_mode(&tab.id, Some(effective.clone()));
                 self.end_chat_turn(&tab.id);
                 if let Some(c) = self.chats.get_mut(&tab.id) {

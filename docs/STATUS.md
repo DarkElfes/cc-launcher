@@ -94,9 +94,8 @@ _Last updated: 2026-11-27_
     and `claude -p` then runs in Manual, while the interactive CLI's built-in default is auto. So the
     button read "Ask permissions" even though nobody picked it, and a pick was lost on a new tab or a
     restart. Now the pick is saved as `settings.permissionMode` and used for new and restored tabs
-    (the VS Code extension also reuses the last pick). "Default" passes the account's
-    `permissions.defaultMode` (user settings.json), or `auto` if that isn't set, and the button shows
-    "Default · Auto". When Claude Code reports a different mode (auto not available → Manual, or a plan
+    (the VS Code extension also reuses the last pick). Nothing picked = `auto`, as in the
+    interactive CLI; the "Default" option is gone. When Claude Code reports a different mode (auto not available → Manual, or a plan
     was approved), the button shows that mode. The mode and model menus close when you click outside
     them (`on_mouse_down_out`). A click on the menu's own button doesn't open it again. Not hand-tested yet.
   - Chat history check (2026-11-27): loading a real transcript gave 111 events → 71 chat items, so
