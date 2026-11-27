@@ -54,6 +54,8 @@ pub struct Composer {
     pub waiting: bool,
     pub is_chat: bool,
     pub voice_on: bool,
+    /// Chat-tab dictation in progress: its status line ("Listening…", an error, …).
+    pub dictation: Option<String>,
     pub model: Option<String>,
     pub mode: Option<String>,
 }
@@ -64,7 +66,7 @@ const HELP: &[(&str, &str)] = &[
     ("Ctrl+↑ / Ctrl+↓", "Previous messages"),
     ("Ctrl+V", "Paste text, or a screenshot as an image"),
     ("+ / drag & drop", "Attach files (images are shown to Claude, other files by path)"),
-    ("Mic / Ctrl+Space", "Voice dictation. Terminal tabs: Claude Code types into its own prompt. Chat tabs: Windows voice typing (Win+H) types into this box."),
+    ("Mic / Ctrl+Space", "Voice dictation with Claude Code (press again to stop). Chat tabs: the words appear in this box; terminal tabs: in Claude Code's prompt."),
     ("Esc", "Go to the terminal"),
     ("Terminal", "Answer Claude's questions and menus there. Right click copies/pastes."),
 ];
@@ -132,16 +134,17 @@ impl Composer {
             waiting: false,
             is_chat: false,
             voice_on: false,
+            dictation: None,
             model: None,
             mode: None,
         }
     }
 
-    fn text(&self, cx: &App) -> String {
+    pub fn text(&self, cx: &App) -> String {
         self.input.read(cx).value().to_string()
     }
 
-    fn set_text(&mut self, text: &str, window: &mut Window, cx: &mut Context<Self>) {
+    pub fn set_text(&mut self, text: &str, window: &mut Window, cx: &mut Context<Self>) {
         let t = text.to_string();
         self.input.update(cx, |s, cx| s.set_value(t, window, cx));
     }
@@ -420,6 +423,18 @@ impl Render for Composer {
             .when(!is_chat, |d| d.px(px(12.)));
 
         let column = column
+            .when_some(self.dictation.clone(), |d, status| {
+                d.child(
+                    div()
+                        .flex()
+                        .items_center()
+                        .gap(px(6.))
+                        .text_size(px(11.))
+                        .text_color(muted_fg())
+                        .child(icon("microphone-fill", theme::red()).size(px(12.)))
+                        .child(status),
+                )
+            })
             .when(self.waiting, |d| {
                 d.child(
                     div()
@@ -485,7 +500,7 @@ impl Render for Composer {
                                     .child(ctl("attach").child(icon("plus", muted_fg()).size(px(16.))).on_click(cx.listener(|this, _, w, cx| this.pick_files(w, cx))))
                                     .child(
                                         ctl("mic")
-                                            .child(icon("microphone", if self.voice_on { foreground() } else { muted_fg() }).size(px(16.)))
+                                            .child(icon(if self.dictation.is_some() { "microphone-fill" } else { "microphone" }, if self.dictation.is_some() { theme::red() } else if self.voice_on { foreground() } else { muted_fg() }).size(px(16.)))
                                             .on_click(cx.listener(|_, _, _, cx| cx.emit(ComposerEvent::Dictate))),
                                     )
                                     .child(div().flex_1())

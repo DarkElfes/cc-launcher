@@ -62,10 +62,23 @@ _Last updated: 2026-11-26_
   - All emoji/text glyphs in the UI replaced with Phosphor outline icons (dashboard folder, Chat /
     Terminal toggle, launch play buttons, account folder/trash, Refresh, Hand off, panel carets, task
     status, background agents, git branch, hand-off radios). Added `circle.svg`, `radio-button.svg`.
-  - Chat tabs: the mic button / Ctrl+Space focuses the message box and opens Windows voice typing
-    (Win+H). Claude Code's own dictation only exists in its terminal UI (it streams audio to
-    Anthropic with the claude.ai login, which the app must not use). **Not checked by hand** (needs
-    speaking): whether Windows voice typing types into the GPUI text box, and Ukrainian support.
+  - Chat-tab dictation goes through a **hidden interactive Claude Code** per account
+    (`backend/dictation.rs`, `ui/dictation.rs`). `claude -p` has no prompt and no `/voice`, and the
+    app must not call Anthropic's voice service itself (it would need the account's credentials), so:
+    mic / Ctrl+Space starts `claude --settings {voice: hold, autoSubmit: false}` in a ConPTY (no
+    window, no hook token), clears its prompt, sends Alt+K (`voice:pushToTalk`) every 33 ms like a
+    held key, reads the prompt line off the screen (`❯ …` between the last two `────` rules) into the
+    message box live; mic again stops the repeats, waits for the text to settle, clears the hidden
+    prompt. Nothing is ever submitted. Sessions are reused per account, closed after 5 idle minutes
+    and on exit. Trust prompt / not signed in → a clear error. Windows voice typing (Win+H, an
+    earlier attempt) didn't support Ukrainian and was removed.
+  - Checked: the hidden session starts, recording starts ("listening…" in its footer; an
+    unspoken run gets "No speech detected" from the service), the app shows "Listening…", stop
+    ends cleanly, no claude processes left after closing. **Not checked** (needs speaking): actual
+    words arriving in the message box, Ukrainian recognition.
+  - Debug helpers: `cc-launcher --dump-claude-screen <claude.exe> <cwd> <config dir> [secs]
+    [text|hold:N]` prints the hidden screen (check the prompt layout after a Claude Code update);
+    debug builds with `CCL_DEBUG_DICTATE=<secs>` start dictation in the active tab and stop it.
   - Memory (release, Task Manager "Memory" = private working set): ~60 MB in a normal window, ~80 MB
     maximized at 2880×1800, ~105 MB with a chat tab maximized; the build before these changes measured
     the same (60 / 95 MB). Debug builds are about the same plus a console window.

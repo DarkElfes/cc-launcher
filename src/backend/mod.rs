@@ -3,6 +3,7 @@
 
 pub mod account_info;
 pub mod chat;
+pub mod dictation;
 pub mod git;
 pub mod history;
 pub mod hook_server;

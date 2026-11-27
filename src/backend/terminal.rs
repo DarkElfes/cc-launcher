@@ -102,6 +102,14 @@ impl Terminal {
         let _ = self.sender.send(Msg::Input(Cow::Owned(data.into())));
     }
 
+    /// A clonable writer for other threads (the dictation key repeat).
+    pub fn input_sender(&self) -> impl Fn(Vec<u8>) + Send + Sync + 'static {
+        let s = self.sender.clone();
+        move |b: Vec<u8>| {
+            let _ = s.send(Msg::Input(Cow::Owned(b)));
+        }
+    }
+
     pub fn resize(&mut self, cols: usize, rows: usize, cell_w: f32, cell_h: f32) {
         if cols < 2 || rows < 2 || (cols == self.cols && rows == self.rows) {
             return;

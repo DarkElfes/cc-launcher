@@ -165,6 +165,9 @@ pub struct LauncherApp {
     pub perm_inputs: HashMap<u64, Entity<InputState>>,
     pub tick: u64,
     pub resizing: Option<Resize>,
+    /// Hidden Claude Code per account, used for chat-tab dictation (ui/dictation.rs).
+    pub dict_sessions: HashMap<String, super::dictation::DictationSession>,
+    pub dict_run: Option<super::dictation::DictationRun>,
 }
 
 fn is_dir(p: &str) -> bool {
@@ -242,6 +245,8 @@ impl LauncherApp {
             perm_inputs: HashMap::new(),
             tick: 0,
             resizing: None,
+            dict_sessions: HashMap::new(),
+            dict_run: None,
         };
         app.apply_profile_settings(None);
         app.reload_profiles();
@@ -252,6 +257,15 @@ impl LauncherApp {
         // Reopen the tabs that were open last time (each continues its conversation).
         cx.spawn_in(window, async move |this, cx| {
             let _ = this.update_in(cx, |this, window, cx| this.restore_open_tabs(window, cx));
+            // Debug builds: CCL_DEBUG_DICTATE=<seconds> starts chat dictation in the active tab and
+            // stops it after that long (to test the flow without clicking).
+            #[cfg(debug_assertions)]
+            if let Some(secs) = std::env::var("CCL_DEBUG_DICTATE").ok().and_then(|s| s.parse::<u64>().ok()) {
+                cx.background_executor().timer(Duration::from_secs(2)).await;
+                let _ = this.update_in(cx, |this, window, cx| this.dictate(window, cx));
+                cx.background_executor().timer(Duration::from_secs(secs)).await;
+                let _ = this.update_in(cx, |this, window, cx| this.dictate(window, cx));
+            }
         })
         .detach();
 
@@ -277,6 +291,7 @@ impl LauncherApp {
                             cx.notify();
                         }
                         this.save_open_tabs();
+                        this.prune_dictation_sessions();
                         if n % 7 == 0 {
                             this.reload_profiles();
                             if let View::Project(id) = this.view.clone() {
@@ -556,6 +571,10 @@ impl LauncherApp {
                 if let Some(t) = self.terms.get(&tab) {
                     t.update(cx, |_, cx| cx.notify());
                 }
+                return;
+            }
+            BackendEvent::TermExit { tab, .. } if tab.starts_with(crate::backend::dictation::TAB_PREFIX) => {
+                self.dictation_session_exited(&tab, window, cx);
                 return;
             }
             BackendEvent::TermExit { tab, code } => {
@@ -1181,6 +1200,10 @@ impl LauncherApp {
     pub fn shutdown(&mut self, cx: &mut Context<Self>) {
         self.save_open_tabs();
         self.store.save(); // window placement
+        if let Some(r) = self.dict_run.take() {
+            r.held.store(false, std::sync::atomic::Ordering::Relaxed);
+        }
+        self.dict_sessions.clear(); // dropping a Terminal ends its claude process
         self.chat.close_all();
         for v in self.terms.values() {
             v.read(cx).kill();
@@ -1192,11 +1215,9 @@ impl LauncherApp {
     pub fn dictate(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let Some(tab) = self.active_tab().cloned() else { return };
         if tab.mode == TabMode::Chat {
-            // Claude Code's own dictation exists only in its terminal UI, so chat tabs use Windows
-            // voice typing: it types straight into the message box.
-            self.composer.update(cx, |c, cx| c.focus_input(window, cx));
-            window.defer(cx, |_, _| platform::start_voice_typing());
-            return;
+            // Claude Code's dictation exists only in its terminal UI: chat tabs borrow a hidden one.
+            let cwd = tab.project_id.as_deref().and_then(|id| self.project(id)).map(|p| p.path.clone()).unwrap_or_default();
+            return self.chat_dictate(&tab.id, &tab.profile, &cwd, window, cx);
         }
         if self.store.settings.voice_mode != Some(VoiceMode::Tap) {
             let lang = if self.store.settings.claude_language.is_some() { "" } else { " Also set Claude language, or dictation expects English." };

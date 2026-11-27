@@ -4,6 +4,7 @@ pub mod app;
 mod chat_store;
 mod chat_view;
 mod composer;
+mod dictation;
 pub mod icons;
 mod panel;
 mod terminal_view;
@@ -316,7 +317,7 @@ impl LauncherApp {
             let busy = self.chats.get(&t.id).map(|c| c.busy).unwrap_or(false);
             let mode = self.chats.get(&t.id).and_then(|c| c.permission_mode.clone());
             let model = t.model.clone();
-            let voice_on = self.store.settings.voice_mode == Some(crate::backend::types::VoiceMode::Tap) && t.mode == TabMode::Terminal;
+            let voice_on = t.mode == TabMode::Chat || self.store.settings.voice_mode == Some(crate::backend::types::VoiceMode::Tap);
             self.composer.update(cx, |c, _| {
                 c.waiting = activity == Some(Activity::NeedsYou);
                 c.busy = busy;

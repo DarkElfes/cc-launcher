@@ -16,6 +16,11 @@ fn main() {
         unsafe { std::env::remove_var(k) };
     }
 
+    let args: Vec<String> = std::env::args().collect();
+    if args.get(1).map(String::as_str) == Some("--dump-claude-screen") {
+        return backend::dictation::dump_screen(&args[2..]);
+    }
+
     let (tx, rx) = async_channel::unbounded();
     if !backend::platform::single_instance(tx.clone()) {
         return; // the running copy shows its window

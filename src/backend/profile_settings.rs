@@ -64,7 +64,7 @@ pub fn clear_language(dir: &Path) {
     }
 }
 
-fn ensure_dictate_key(dir: &Path) {
+pub fn ensure_dictate_key(dir: &Path) {
     let path = dir.join("keybindings.json");
     let Some(mut file) = read_settings(&path) else { return };
     let mut bindings: Vec<Value> = file.get("bindings").and_then(|b| b.as_array()).cloned().unwrap_or_default();
