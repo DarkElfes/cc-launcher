@@ -5,3 +5,6 @@ target/
 .credentials.json
 .claude.json
 .claude-profiles/
+
+# Old Electron build output
+dist/
