@@ -315,7 +315,8 @@ impl LauncherApp {
         let composer = self.active_tab().filter(|t| t.kind == TabKind::Project).cloned().map(|t| {
             let activity = self.tracker.get(&t.id).map(|s| s.activity);
             let busy = self.chats.get(&t.id).map(|c| c.busy).unwrap_or(false);
-            let mode = self.chats.get(&t.id).and_then(|c| c.permission_mode.clone());
+            let actual_mode = self.chats.get(&t.id).and_then(|c| c.permission_mode.clone());
+            let mode = t.permission_mode.clone();
             let model = t.model.clone();
             let voice_on = t.mode == TabMode::Chat || self.store.settings.voice_mode == Some(crate::backend::types::VoiceMode::Tap);
             self.composer.update(cx, |c, _| {
@@ -324,6 +325,7 @@ impl LauncherApp {
                 c.is_chat = t.mode == TabMode::Chat;
                 c.voice_on = voice_on;
                 c.mode = mode;
+                c.actual_mode = actual_mode;
                 c.model = model;
             });
             self.composer.clone()

@@ -27,7 +27,7 @@ pub const MODELS: &[(&str, &str)] = &[("", "Default model"), ("opus", "Opus"), (
 
 /// Permission modes for chat tabs: (value for `--permission-mode`, label, hint). "" = account default.
 pub const MODES: &[(&str, &str, &str)] = &[
-    ("", "Default", "Use the account's own setting"),
+    ("", "Default", "The account's setting, else Auto (like the CLI)"),
     ("default", "Ask permissions", "Ask before edits and commands"),
     ("acceptEdits", "Accept edits", "Edit files without asking"),
     ("plan", "Plan mode", "Plan first, no changes until you approve"),
@@ -48,6 +48,8 @@ pub struct Composer {
     history: HashMap<String, Vec<String>>,
     hist_index: Option<usize>,
     menu: Option<Menu>,
+    /// The menu a click outside just closed: that same click on its button must not reopen it.
+    menu_closed: Option<(Menu, std::time::Instant)>,
     show_help: bool,
     // Set by the app each frame.
     pub busy: bool,
@@ -57,7 +59,10 @@ pub struct Composer {
     /// Chat-tab dictation in progress: its status line ("Listening…", an error, …).
     pub dictation: Option<String>,
     pub model: Option<String>,
+    /// Permission mode picked for the tab (None = Default).
     pub mode: Option<String>,
+    /// The mode Claude Code reports it is in (init / status events).
+    pub actual_mode: Option<String>,
 }
 
 const HELP: &[(&str, &str)] = &[
@@ -129,6 +134,7 @@ impl Composer {
             history: HashMap::new(),
             hist_index: None,
             menu: None,
+            menu_closed: None,
             show_help: false,
             busy: false,
             waiting: false,
@@ -137,6 +143,7 @@ impl Composer {
             dictation: None,
             model: None,
             mode: None,
+            actual_mode: None,
         }
     }
 
@@ -236,8 +243,22 @@ impl Composer {
         .detach();
     }
 
+    /// The picked mode; what Claude Code reports wins when it differs (e.g. auto wasn't
+    /// available, or an approved plan moved on). "Default" shows the mode it resolved to.
+    fn mode_label(&self) -> String {
+        let label = |v: &str| MODES.iter().find(|(m, _, _)| *m == v).map(|(_, l, _)| l.to_string()).unwrap_or_else(|| v.to_string());
+        let actual = self.actual_mode.as_deref().map(|m| if m == "manual" { "default" } else { m });
+        match (self.mode.as_deref(), actual) {
+            (None, Some(a)) => format!("Default · {}", label(a)),
+            (None, None) => "Default".into(),
+            (Some(p), Some(a)) if a != p => label(a),
+            (Some(p), _) => label(p),
+        }
+    }
+
     fn toggle_menu(&mut self, m: Menu, cx: &mut Context<Self>) {
-        self.menu = if self.menu == Some(m) { None } else { Some(m) };
+        let just_closed = self.menu_closed.take().is_some_and(|(c, at)| c == m && at.elapsed().as_millis() < 400);
+        self.menu = if self.menu == Some(m) || just_closed { None } else { Some(m) };
         cx.notify();
     }
 
@@ -309,7 +330,14 @@ impl Composer {
             .bg(card())
             .border_1()
             .border_color(input_border())
-            .shadow_lg();
+            .shadow_lg()
+            .on_mouse_down_out(cx.listener(move |this, _, _, cx| {
+                if this.menu == Some(menu) {
+                    this.menu = None;
+                    this.menu_closed = Some((menu, std::time::Instant::now()));
+                    cx.notify();
+                }
+            }));
         match menu {
             Menu::Model => {
                 let cur = self.model.clone().unwrap_or_default();
@@ -378,7 +406,7 @@ impl Render for Composer {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let can_send = self.can_send(cx);
         let model_label = MODELS.iter().find(|(a, _)| Some(*a) == self.model.as_deref()).map(|(_, l)| *l).unwrap_or("Default model");
-        let mode_label = MODES.iter().find(|(v, _, _)| Some(*v) == self.mode.as_deref()).map(|(_, l, _)| *l).unwrap_or("Default");
+        let mode_label = self.mode_label();
         let files = self.render_files(cx);
         let menu = self.render_menu(cx);
 

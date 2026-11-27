@@ -7,7 +7,7 @@ use crate::backend::account_info::{refresh_profile, ProfileLive};
 use crate::backend::chat::{read_transcript_messages, ChatManager, ChatStartOptions, StopKind};
 use crate::backend::history::project_dir_name;
 use crate::backend::hook_server::HookServer;
-use crate::backend::profile_settings::{apply_voice_settings, DICTATE_SEQUENCE};
+use crate::backend::profile_settings::{apply_voice_settings, effective_permission_mode, DICTATE_SEQUENCE};
 use crate::backend::profiles::*;
 use crate::backend::sessions::{prune_session_files, SessionTracker};
 use crate::backend::store::{data_dir, Store};
@@ -56,6 +56,8 @@ pub struct Tab {
     pub started_at: i64,
     /// Model alias for this tab (None = account default).
     pub model: Option<String>,
+    /// Permission mode picked for this chat tab (None = Default).
+    pub permission_mode: Option<String>,
 }
 
 impl Tab {
@@ -778,7 +780,7 @@ impl LauncherApp {
             self.tracker.open(&tab_id, profile_dir(&req.profile));
             self.chat.open(
                 &tab_id,
-                ChatStartOptions { claude, cwd, env: self.claude_env(&req.profile, &tab_id), resume, permission_mode: None, model: self.store.settings.model.clone() },
+                ChatStartOptions { claude, cwd, env: self.claude_env(&req.profile, &tab_id), resume, permission_mode: Some(effective_permission_mode(&req.profile, self.store.settings.permission_mode.as_deref())), model: self.store.settings.model.clone() },
             );
             let mut state = ChatState::default();
             if let Some(t) = transcript {
@@ -836,7 +838,7 @@ impl LauncherApp {
             self.touch_project(pid, &req.profile);
         }
         self.add_tab(
-            Tab { id: tab_id.clone(), kind: req.kind, mode, project_id: req.project_id.clone(), profile: req.profile.clone(), exit_code: None, started_at: now_ms(), model: self.store.settings.model.clone() },
+            Tab { id: tab_id.clone(), kind: req.kind, mode, project_id: req.project_id.clone(), profile: req.profile.clone(), exit_code: None, started_at: now_ms(), model: self.store.settings.model.clone(), permission_mode: self.store.settings.permission_mode.clone() },
             window,
             cx,
         );
@@ -1273,10 +1275,17 @@ impl LauncherApp {
                 cx.notify();
             }
             ComposerEvent::SetMode(mode) => {
-                self.chat.set_permission_mode(&tab.id, mode.clone());
+                // Remembered for new tabs too (like the VS Code extension does).
+                self.store.settings.permission_mode = mode.clone();
+                self.store.save();
+                if let Some(t) = self.tabs.iter_mut().find(|t| t.id == tab.id) {
+                    t.permission_mode = mode.clone();
+                }
+                let effective = effective_permission_mode(&tab.profile, mode.as_deref());
+                self.chat.set_permission_mode(&tab.id, Some(effective.clone()));
                 self.end_chat_turn(&tab.id);
                 if let Some(c) = self.chats.get_mut(&tab.id) {
-                    c.permission_mode = mode.clone();
+                    c.permission_mode = Some(effective);
                 }
                 cx.notify();
             }

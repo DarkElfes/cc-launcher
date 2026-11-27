@@ -1,6 +1,6 @@
 # Status
 
-_Last updated: 2026-11-26_
+_Last updated: 2026-11-27_
 
 ## 0.10.0: rewrite from Electron to Rust + GPUI (branch `gpui-rewrite`)
 - The whole app is now native Rust on GPUI (`gpui-kit` 0.11 / gpui-component). All Electron, React,
@@ -90,6 +90,19 @@ _Last updated: 2026-11-26_
     live thinking to `%APPDATA%\cc-launcher\thinking.jsonl` (key: message id + block position;
     capped at 20 MB) and fills it in on resume (`backend/thinking_cache.rs`). Older sessions show
     "Thought (text not saved by Claude Code)". Not hand-tested yet.
+  - **Permission mode + dropdowns (2026-11-27):** chat tabs started without `--permission-mode`,
+    and `claude -p` then runs in Manual, while the interactive CLI's built-in default is auto. So the
+    button read "Ask permissions" even though nobody picked it, and a pick was lost on a new tab or a
+    restart. Now the pick is saved as `settings.permissionMode` and used for new and restored tabs
+    (the VS Code extension also reuses the last pick). "Default" passes the account's
+    `permissions.defaultMode` (user settings.json), or `auto` if that isn't set, and the button shows
+    "Default · Auto". When Claude Code reports a different mode (auto not available → Manual, or a plan
+    was approved), the button shows that mode. The mode and model menus close when you click outside
+    them (`on_mouse_down_out`). A click on the menu's own button doesn't open it again. Not hand-tested yet.
+  - Chat history check (2026-11-27): loading a real transcript gave 111 events → 71 chat items, so
+    resume works. A **new** chat tab is a new session and starts empty, like `claude` without
+    `--continue`. Earlier sessions open through the panel's History list (play button) or come back
+    on restart.
   - Memory (release, Task Manager "Memory" = private working set): ~60 MB in a normal window, ~80 MB
     maximized at 2880×1800, ~105 MB with a chat tab maximized; the build before these changes measured
     the same (60 / 95 MB). Debug builds are about the same plus a console window.
