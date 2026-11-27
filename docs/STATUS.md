@@ -116,6 +116,10 @@ _Last updated: 2026-11-27_
     `_shared`, and `--resume <id>` from the other account finds it and appends to the **same file**.
     The answer itself hit that account's 5-hour limit. Unit test covers merge and link. **Not hand-tested
     in the app yet.** The first run moves the existing cc-launcher sessions of `darkness` into `_shared`.
+  - History rows have a trash button: the session (.jsonl + its `<id>/` folder) goes to the Recycle
+    Bin after a confirm; not offered for a session open in a tab. Project header: Explorer / Editor /
+    Remove are icon buttons with hover hints; Remove only takes the project off the list (files and
+    sessions stay). Not hand-tested yet.
   - Memory (release, Task Manager "Memory" = private working set): ~60 MB in a normal window, ~80 MB
     maximized at 2880×1800, ~105 MB with a chat tab maximized; the build before these changes measured
     the same (60 / 95 MB). Debug builds are about the same plus a console window.

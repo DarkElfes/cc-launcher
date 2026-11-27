@@ -497,6 +497,47 @@ impl LauncherApp {
         .detach();
     }
 
+    /// Moves a past session (its .jsonl and its `<id>/` folder of tool outputs) to the Recycle Bin.
+    pub fn delete_session(&mut self, project_id: &str, h: HistorySession, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(p) = self.project(project_id).cloned() else { return };
+        if !h.id.chars().all(|c| c.is_ascii_alphanumeric() || c == '-') {
+            return;
+        }
+        let folder = if h.profile.is_empty() {
+            crate::backend::shared_sessions::shared_dir(&p.path)
+        } else {
+            Some(profile_dir(&h.profile).join("projects").join(project_dir_name(&p.path)))
+        };
+        let Some(folder) = folder else { return };
+        let title = if h.title.is_empty() { "Untitled session".to_string() } else { h.title.chars().take(80).collect() };
+        let answer = window.prompt(
+            PromptLevel::Warning,
+            &format!("Delete \"{title}\"?"),
+            Some("The conversation goes to the Recycle Bin, for every account. You can restore it from there."),
+            &["Delete", "Cancel"],
+            cx,
+        );
+        let pid = project_id.to_string();
+        cx.spawn_in(window, async move |this, cx| {
+            if answer.await != Ok(0) {
+                return;
+            }
+            let file = folder.join(format!("{}.jsonl", h.id));
+            let dir = folder.join(&h.id);
+            let mut result = platform::move_to_trash(&file.to_string_lossy());
+            if result.is_ok() && dir.is_dir() {
+                result = platform::move_to_trash(&dir.to_string_lossy());
+            }
+            let _ = this.update_in(cx, |this, window, cx| {
+                if let Err(e) = result {
+                    this.show_error(format!("Couldn't delete the session: {e}"), window, cx);
+                }
+                this.load_history(&pid, cx);
+            });
+        })
+        .detach();
+    }
+
     pub fn load_mcp(&mut self, profile: &str, project_id: &str, force: bool, cx: &mut Context<Self>) {
         let Some(p) = self.project(project_id).cloned() else { return };
         let key = format!("{profile}|{}", p.path);

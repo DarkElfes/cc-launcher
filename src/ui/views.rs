@@ -224,9 +224,12 @@ impl LauncherApp {
                         div()
                             .flex()
                             .gap(px(8.))
-                            .child(theme::button("explorer", "Explorer").on_click(cx.listener(move |this, _, w, cx| this.open_folder(&path, w, cx))))
-                            .child(theme::button("editor", "Editor").on_click(cx.listener(move |this, _, w, cx| this.open_in_editor(&path2, w, cx))))
-                            .child(theme::button_danger("remove", "Remove").on_click(cx.listener(move |this, _, w, cx| this.remove_project(&remove_id, w, cx)))),
+                            .child(theme::icon_btn_tip("explorer", "folder-open", foreground(), "Open folder in Explorer").on_click(cx.listener(move |this, _, w, cx| this.open_folder(&path, w, cx))))
+                            .child(theme::icon_btn_tip("editor", "code", foreground(), "Open in editor").on_click(cx.listener(move |this, _, w, cx| this.open_in_editor(&path2, w, cx))))
+                            .child(
+                                theme::icon_btn_tip("remove", "trash", theme::red(), "Remove from the list (files and sessions stay)")
+                                    .on_click(cx.listener(move |this, _, w, cx| this.remove_project(&remove_id, w, cx))),
+                            ),
                     ),
             )
             .child(launch)

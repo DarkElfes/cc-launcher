@@ -402,11 +402,17 @@ impl LauncherApp {
                             }))
                             .child(div().flex().items_center().gap(px(8.)).text_size(px(10.)).text_color(muted_fg()).when(!h.profile.is_empty(), |d| d.child(profile_tag(&h.profile))).child(time_ago(Some(h.modified_at)))),
                     )
+                    .when(!is_open, |d| {
+                        let (pid, h2) = (pid.clone(), h.clone());
+                        d.child(theme::tip(theme::icon_button(("del-session", i), "trash"), "Delete (to the Recycle Bin)").on_click(cx.listener(move |this, _, w, cx| {
+                            this.delete_session(&pid, h2.clone(), w, cx);
+                        })))
+                    })
                     .child(if is_open {
                         muted("open").into_any_element()
                     } else {
                         let (pid, hid, accounts) = (pid.clone(), hid.clone(), accounts.clone());
-                        theme::icon_button(("resume", i), "play")
+                        theme::tip(theme::icon_button(("resume", i), "play"), "Open")
                             .border_1()
                             .border_color(if picking { primary() } else { border() })
                             .on_click(cx.listener(move |this, _, w, cx| {

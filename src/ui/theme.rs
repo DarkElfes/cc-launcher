@@ -171,6 +171,30 @@ pub fn icon_button(id: impl Into<ElementId>, icon_name: &str) -> Stateful<Div> {
         .child(icon(icon_name, muted_fg()))
 }
 
+/// Hover hint for an element (icon-only buttons).
+pub fn tip(el: Stateful<Div>, text: &'static str) -> Stateful<Div> {
+    el.tooltip(move |w, cx| gpui_kit::component::tooltip::Tooltip::new(text).build(w, cx))
+}
+
+/// Bordered icon-only button with a hover hint.
+pub fn icon_btn_tip(id: impl Into<ElementId>, icon_name: &str, color: Hsla, text: &'static str) -> Stateful<Div> {
+    tip(
+        div()
+            .id(id.into())
+            .flex()
+            .flex_none()
+            .items_center()
+            .justify_center()
+            .size(px(30.))
+            .border_1()
+            .border_color(border())
+            .cursor_pointer()
+            .hover(|s| s.bg(hover()))
+            .child(icon(icon_name, color).size(px(16.))),
+        text,
+    )
+}
+
 pub fn disabled(el: Stateful<Div>, off: bool) -> Stateful<Div> {
     if off { el.opacity(0.45).cursor_default() } else { el }
 }
