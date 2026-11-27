@@ -372,7 +372,6 @@ impl LauncherApp {
             .filter(|t| t.exit_code.is_none())
             .filter_map(|t| self.tracker.get(&t.id).and_then(|s| s.session_id.clone()))
             .collect();
-        let default_prof = project.last_profile.clone().filter(|p| self.profiles.iter().any(|x| &x.name == p)).or_else(|| self.profiles.first().map(|p| p.name.clone())).unwrap_or_default();
         let pid = project.id.clone();
         let hist_body = match self.history.get(&project.id).cloned() {
             None => muted("Loading…"),
@@ -380,10 +379,12 @@ impl LauncherApp {
             Some(items) => div().flex().flex_col().gap(px(4.)).children(items.into_iter().enumerate().map(|(i, h)| {
                 let is_open = open_ids.contains(&h.id);
                 let pid = pid.clone();
-                // Shared sessions have no account: they open with the account last used here.
-                let hprof = if h.profile.is_empty() { default_prof.clone() } else { h.profile.clone() };
+                // Shared sessions open with any account (you pick); a session in a folder that isn't
+                // shared yet only with its own.
+                let accounts: Vec<String> = if h.profile.is_empty() { self.profiles.iter().map(|p| p.name.clone()).collect() } else { vec![h.profile.clone()] };
+                let picking = self.history_pick.as_deref() == Some(h.id.as_str()) && !is_open;
                 let hid = h.id.clone();
-                div()
+                let row = div()
                     .flex()
                     .items_center()
                     .gap(px(8.))
@@ -404,16 +405,45 @@ impl LauncherApp {
                     .child(if is_open {
                         muted("open").into_any_element()
                     } else {
+                        let (pid, hid, accounts) = (pid.clone(), hid.clone(), accounts.clone());
                         theme::icon_button(("resume", i), "play")
                             .border_1()
-                            .border_color(border())
+                            .border_color(if picking { primary() } else { border() })
                             .on_click(cx.listener(move |this, _, w, cx| {
-                                let mut req = OpenRequest::project(&pid, &hprof);
-                                req.resume_session_id = Some(hid.clone());
-                                this.open_tab(req, w, cx);
+                                if accounts.len() == 1 {
+                                    let mut req = OpenRequest::project(&pid, &accounts[0]);
+                                    req.resume_session_id = Some(hid.clone());
+                                    this.open_tab(req, w, cx);
+                                } else {
+                                    this.history_pick = if this.history_pick.as_deref() == Some(hid.as_str()) { None } else { Some(hid.clone()) };
+                                    cx.notify();
+                                }
                             }))
                             .into_any_element()
-                    })
+                    });
+                div().flex().flex_col().gap(px(4.)).child(row).when(picking, |d| {
+                    d.child(
+                        div()
+                            .flex()
+                            .flex_wrap()
+                            .items_center()
+                            .gap(px(6.))
+                            .text_size(px(10.))
+                            .text_color(muted_fg())
+                            .child("Open with")
+                            .children(accounts.iter().enumerate().map(|(j, a)| {
+                                let (pid, hid, a2) = (pid.clone(), hid.clone(), a.clone());
+                                theme::btn_outline(SharedString::from(format!("hist-open-{i}-{j}")))
+                                    .child(profile_tag(a))
+                                    .on_click(cx.listener(move |this, _, w, cx| {
+                                        this.history_pick = None;
+                                        let mut req = OpenRequest::project(&pid, &a2);
+                                        req.resume_session_id = Some(hid.clone());
+                                        this.open_tab(req, w, cx);
+                                    }))
+                            })),
+                    )
+                })
             })),
         };
         sections.push(self.section("History", None, hist_body.into_any_element(), cx));

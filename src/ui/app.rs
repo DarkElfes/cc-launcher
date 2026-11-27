@@ -151,6 +151,8 @@ pub struct LauncherApp {
     pub update: UpdateState,
     pub git: HashMap<String, GitInfo>,
     pub history: HashMap<String, Vec<HistorySession>>,
+    /// History row whose "Open with" account choice is shown (session id).
+    pub history_pick: Option<String>,
     pub mcp: HashMap<String, McpEntry>,
     pub collapsed: HashSet<&'static str>,
     pub composer: Entity<Composer>,
@@ -234,6 +236,7 @@ impl LauncherApp {
             update: UpdateState::Idle,
             git: HashMap::new(),
             history: HashMap::new(),
+            history_pick: None,
             mcp: HashMap::new(),
             collapsed: ["Connectors"].into_iter().collect(),
             composer,

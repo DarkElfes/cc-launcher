@@ -109,7 +109,7 @@ _Last updated: 2026-11-27_
     It runs when a project tab opens and no other tab of that project is open. Existing folders are
     merged first: renames only, nothing deleted; a clash with different content is kept as
     `<name>.from-<profile>.bak`. History lists each session once (no account tag for shared ones); ▶
-    opens it with the project's last account. Project header: **Last session / New session** chips
+    shows "Open with [account]…" and you pick the account. Project header: **Last session / New session** chips
     (`settings.continueLast`, default Last). An account button continues the newest shared session
     in that account, or shows its tab if it's already open.
     Checked with real claude 2.1.x in a temp project: a session written through the junction lands in
