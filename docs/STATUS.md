@@ -151,7 +151,8 @@ _Last updated: 2026-11-27_
   - **Released v0.10.1 as Latest** (2026-11-27, tag on 066d541 of `gpui-rewrite`). It has everything above,
     including the dictation trust fix. Checked: `releases/latest` returns v0.10.1, and the downloaded exe matches the
     build. The v0.10.0 pre-release (568ef43, without the dictation fix) is still listed. Apps on 0.10.0
-    will be offered 0.10.1. `gpui-rewrite` is not merged into `main` yet, so `main` still holds the Electron code.
+    will be offered 0.10.1. Then `gpui-rewrite` was merged into `main` (merge dda38bb, `-s ours`: the Electron 0.9.1–0.9.2 commits that
+    were only on `main` stay in history, and their changes were already ported). `main` is the Rust app now, with a README.
   - Memory (release, Task Manager "Memory" = private working set): ~60 MB in a normal window, ~80 MB
     maximized at 2880×1800, ~105 MB with a chat tab maximized; the build before these changes measured
     the same (60 / 95 MB). Debug builds are about the same plus a console window.
